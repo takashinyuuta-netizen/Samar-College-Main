@@ -63,3 +63,14 @@ The Kid Server has its own changelog in its repository.
 - Main game made public; content questionnaire completed
 - New icon and thumbnail (no Roblox logo, no school seal)
 - Source code moved to this repository; backups, Studio scratch copies and the school seal data are not included
+
+## v0.8 – Performance & polish (November 2026)
+- School walls, floors, ceilings and blocks merged into meshes in Blender (geometry batching) for better FPS; the meshes live in the place file, not in this repository
+- Instance streaming tuned and the school models kept loaded (persistent), so buildings stay visible from far away
+- Settings > Performance: Shadows, Grass, Improve FPS, Disable Effects and Show FPS (FPSDisplay, GrassToggle, PerformanceSettings)
+- AutoPerformance turns the heavy options off on low-end phones and tablets; InteriorCulling hides small room details far from the camera
+- Server switch removed from Settings: the Main and Kid servers are separate experiences with no teleport between them
+- Admin panel: all player records, time in / time out log, report statuses and server announcements
+- Scrollable Top 50 boards (ScrollBoards); leaderboard stands moved to the sidewalk in front of the main gate
+- Drivable car and motorcycle at the San Roque street parking; sprinting
+- Build tools for park furniture, trees, utility poles and union separation

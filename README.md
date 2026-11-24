@@ -16,6 +16,9 @@ The younger players' version lives in a separate repository: **Samar College [Ki
 - Leaderboard stands (Top 50): coins, event wins, speed runs, stay time, donations
 - Music player, shop, bag/profile UI, loading screen with "tap to continue"
 - Optional Robux donations (developer products)
+- Performance options in Settings (Shadows, Grass, Improve FPS, Disable Effects, Show FPS) and an automatic low-end mode
+- In-game admin panel: player records, time in / time out log, reports and moderation
+- No server switch: the Main game and the Kid Server are separate experiences
 
 ## Repository layout
 ```
@@ -31,7 +34,8 @@ default.project.json     Rojo project file
 ```
 File names follow the Rojo convention: `*.server.luau` = Script, `*.client.luau` = LocalScript, `*.luau` = ModuleScript.
 
-> Only scripts are stored here. The 3D campus (parts, models, terrain) lives in the Roblox place file.
+> Only scripts are stored here. The 3D campus (parts, models, terrain, and the school meshes made in Blender) lives in the Roblox place file.
+> No player data, passwords, API keys or photos are stored in this repository.
 
 ## Docs
 - [CHANGELOG.md](CHANGELOG.md) — everything added, version by version
