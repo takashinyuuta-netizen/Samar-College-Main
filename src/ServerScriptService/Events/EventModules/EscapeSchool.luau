@@ -235,7 +235,7 @@ local function computePath(from, to)
 end
 
 ---------------------------------------------------------------- patrol NPCs
-local TEMPLATES = { Guard = "Guard", Teacher = "Ma'am Carlota" }
+local TEMPLATES = { Guard = "Guard", Teacher = "Canteen Manager" }
 
 local function setupAnimations(n)
 	local animator = n.hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", n.hum)

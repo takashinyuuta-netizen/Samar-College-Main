@@ -74,3 +74,4 @@ The Kid Server has its own changelog in its repository.
 - Scrollable Top 50 boards (ScrollBoards); leaderboard stands moved to the sidewalk in front of the main gate
 - Drivable car and motorcycle at the San Roque street parking; sprinting
 - Build tools for park furniture, trees, utility poles and union separation
+- Canteen NPC renamed from a named person to the "Canteen Manager" (dialogue, name tag and Escape School patrol template)

@@ -1,4 +1,4 @@
--- Ma'am Carlota — the canteen manager (sits at the manager's desk by the kitchen counter)
+-- Canteen Manager (sits at the manager's desk by the kitchen counter)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DialogModule = require(ReplicatedStorage.DialogModule)
 
@@ -13,9 +13,9 @@ local GOLD = "<font color='rgb(255,220,127)'>%s</font>"
 local function hi(t) return GOLD:format(t) end
 local function pick(t) return t[math.random(#t)] end
 
-local dialogObject = DialogModule.new("Ma'am Carlota", npc, prompt)
+local dialogObject = DialogModule.new("Canteen Manager", npc, prompt)
 local OPTIONS = { "What's good today?", "Where do I pay?", "Canteen rules?", "Nevermind" }
-dialogObject:addDialog("Good day, iho / iha! I'm Ma'am Carlota, the " .. hi("canteen manager") .. ". Did you eat already?", OPTIONS) -- 1: greeting
+dialogObject:addDialog("Good day, iho / iha! I'm the " .. hi("canteen manager") .. ". Did you eat already?", OPTIONS) -- 1: greeting
 dialogObject:addDialog("Anything else, iho / iha?", OPTIONS) -- 2: after an answer
 
 local ANSWERS = {
