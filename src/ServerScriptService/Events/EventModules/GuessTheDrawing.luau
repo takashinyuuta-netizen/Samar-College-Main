@@ -12,6 +12,11 @@
   • Guesses: checked on the server; wrong guesses are filtered with TextService before
     anyone else sees them. Correct = GuessPoints + time bonus; drawer gets DrawerPoints
     for each correct guesser. Words come from ServerScriptService.Events.DrawingWords.
+  • SAFETY (drawings are not checked by Roblox, so the game is 16+):
+      🚫 Hide vote — any player who isn't drawing can vote; 2 votes (or 1 if only one other player
+         is here) clear the board at once, end the round and stop that player from drawing again in
+         this server. An automatic report ("Inappropriate drawing") goes to the admins.
+      🧹 Admins can clear the board from the admin panel (M.AdminClear).
   • SOLO / few players: if fewer than MinPlayers join (e.g. only you), the 🤖 Art Bot draws real pictures
     (DrawingBotArt) stroke by stroke and you guess them; extra letters are revealed over time. Works in the
     live game, not only in Studio.
@@ -25,6 +30,13 @@ local BotArt = require(script.Parent.Parent:WaitForChild("DrawingBotArt"))
 local SOLO_ROUNDS = 4
 
 local M = {}
+M.DrawBanned = {} -- [UserId] = true: can't draw again in this server (drawing was hidden)
+M.Active = nil    -- ctx of the running Guess the Drawing (for the admin panel)
+local HIDE_VOTES = 2
+local function reports()
+	local ok, mod = pcall(function() return require(game:GetService("ServerScriptService"):WaitForChild("PlayerReports", 5)) end)
+	return ok and mod or nil
+end
 local FALLBACK = { pos = Vector3.new(125, 3.4, 15), name = "Courtyard" }
 local PALETTE = 8 -- number of colors the client offers (validated here)
 
@@ -165,6 +177,7 @@ end
 
 ---------------------------------------------------------------- build
 function M.Setup(ctx)
+	M.Active = ctx
 	ctx.Data.order, ctx.Data.drew, ctx.Data.guessedAny = {}, {}, {}
 	ctx.Data.lastGuess, ctx.Data.strokeLog, ctx.Data.feed = {}, {}, {}
 	local rooms = classroomBoards()
@@ -257,7 +270,7 @@ end
 
 local function chooseDrawer(ctx)
 	local list = {}
-	for p in pairs(ctx.Participants) do if p.Parent and not ctx.Data.drew[p] then table.insert(list, p) end end
+	for p in pairs(ctx.Participants) do if p.Parent and not ctx.Data.drew[p] and not M.DrawBanned[p.UserId] then table.insert(list, p) end end
 	if #list == 0 then return nil end
 	return list[math.random(#list)]
 end
@@ -326,7 +339,7 @@ local function runRound(ctx, drawer, word, isBot)
 		bset(ctx, "timer", tostring(math.max(0, math.ceil(round.ends - os.clock()))))
 		bset(ctx, "guessed", need > 0 and ("✅ %d / %d\nguessed it"):format(got, need) or "")
 		if need > 0 and got >= need then break end
-		if drawer and not isBot and not drawer.Parent then break end -- the drawer left the game
+		if drawer and not isBot and (not drawer.Parent or not ctx:IsIn(drawer)) then break end -- the drawer left the game / the event
 		for k, at in ipairs(botHints) do
 			if at and (round.ends - os.clock()) <= cfg.RoundTime * at and #word > 2 then
 				botHints[k] = false
@@ -396,10 +409,66 @@ function M.Start(ctx)
 	end)
 end
 
+---------------------------------------------------------------- 🚫 hide a bad drawing
+-- clears the board for everyone, ends the round, stops the drawer from drawing again, reports them
+local function hideDrawing(ctx, round, by, why)
+	if not round or round.hidden then return false end
+	round.hidden = true
+	round.history = {}
+	round.points = math.huge -- no more strokes this round
+	ctx:Broadcast({ type = "clear" })
+	ctx:Broadcast({ type = "hidden", text = "🚫 The drawing was hidden (" .. why .. ")" })
+	boardFeed(ctx, "🚫 Drawing hidden (" .. why .. ")", false)
+	local d = round.drawer
+	if d and not round.isBot then
+		M.DrawBanned[d.UserId] = true
+		if d.Parent then ctx:Toast(d, "🚫 Your drawing was hidden. You can't draw again in this server.") end
+		local R = reports()
+		if R and by then
+			task.spawn(function()
+				pcall(R.create, { u = by.UserId, n = by.Name, d = by.DisplayName }, { u = d.UserId, n = d.Name, d = d.DisplayName },
+					"Drawing", ("[Automatic] Guess the Drawing: drawing hidden (%s). Word was '%s'."):format(why, tostring(round.word)))
+			end)
+		end
+	end
+	round.ends = os.clock() -- end the round now (the word is shown, next drawer goes)
+	return true
+end
+
+-- 🧹 admin panel: clear the board (and stop that player from drawing again)
+function M.AdminClear(admin)
+	local ctx = M.Active
+	local round = ctx and ctx.Phase == "Active" and ctx.Data.round
+	if not round then return false, "No Guess the Drawing round is running right now" end
+	if round.isBot then return false, "The Art Bot is drawing — nothing to clear" end
+	if round.hidden then return false, "This drawing was already cleared" end
+	local who = round.drawerName
+	hideDrawing(ctx, round, admin, "by an admin")
+	return true, "🧹 Board cleared — " .. tostring(who) .. " can't draw again in this server"
+end
+
 ---------------------------------------------------------------- actions (strokes, clear, guesses)
 function M.OnAction(ctx, player, action, data)
 	local round = ctx.Data.round
 	local cfg = ctx.Config.GuessTheDrawing
+	if action == "hideVote" then
+		-- anyone in the server who isn't drawing (players watching too)
+		if not round or round.isBot or round.hidden then return { ok = false, msg = "Nothing to hide right now" } end
+		if player == round.drawer then return { ok = false } end
+		round.votes = round.votes or {}
+		if round.votes[player] then return { ok = false, msg = "You already voted to hide this drawing" } end
+		round.votes[player] = true
+		local others, n = 0, 0
+		for _, p in ipairs(Players:GetPlayers()) do if p ~= round.drawer then others += 1 end end
+		for p in pairs(round.votes) do if p.Parent then n += 1 end end
+		local need = math.max(1, math.min(HIDE_VOTES, others))
+		if n >= need then
+			hideDrawing(ctx, round, player, "players voted")
+			return { ok = true, msg = "🚫 Drawing hidden. Thanks for keeping the game safe!" }
+		end
+		ctx:Broadcast({ type = "feed", text = ("🚫 %d / %d votes to hide this drawing"):format(n, need) })
+		return { ok = true, msg = ("🚫 Vote counted (%d / %d)"):format(n, need) }
+	end
 	if action == "drawSync" then
 		-- anyone (spectators too) can ask for the drawing so far (e.g. the board just streamed in)
 		local now = os.clock()
@@ -415,7 +484,7 @@ function M.OnAction(ctx, player, action, data)
 	if not ctx:IsIn(player) or not round then return { ok = false } end
 
 	if action == "stroke" then
-		if player ~= round.drawer or type(data) ~= "table" or type(data.pts) ~= "table" then return { ok = false } end
+		if player ~= round.drawer or round.hidden or M.DrawBanned[player.UserId] or type(data) ~= "table" or type(data.pts) ~= "table" then return { ok = false } end
 		-- rate limit: 20 stroke messages per second
 		local log = ctx.Data.strokeLog[player]
 		local now = os.clock()
@@ -438,7 +507,7 @@ function M.OnAction(ctx, player, action, data)
 		ctx:Broadcast(msg)
 		return { ok = true }
 	elseif action == "clear" then
-		if player ~= round.drawer then return { ok = false } end
+		if player ~= round.drawer or round.hidden then return { ok = false } end
 		round.points = 0
 		round.history = {}
 		ctx:Broadcast({ type = "clear" })
@@ -477,6 +546,7 @@ end
 function M.OnPlayerLeft(ctx, player)
 	ctx.Data.strokeLog[player] = nil
 	ctx.Data.lastGuess[player] = nil
+	if player.Parent then ctx:Send(player, { type = "left" }) end -- close the drawing / guessing panel (they can still watch)
 end
 
 function M.Finish(ctx)
@@ -487,6 +557,9 @@ function M.Finish(ctx)
 	ctx:Broadcast({ type = "clear" })
 end
 
-function M.Cleanup(ctx) ctx:Broadcast({ type = "clear", hide = true }) end
+function M.Cleanup(ctx)
+	if M.Active == ctx then M.Active = nil end
+	ctx:Broadcast({ type = "clear", hide = true })
+end
 
 return M

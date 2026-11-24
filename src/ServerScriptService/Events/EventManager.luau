@@ -163,23 +163,47 @@ local function newContext(id, def, mod)
 		self.Participants[player] = true
 		-- equipment (bike, coils, boots, flashlight...) is off while you take part (EquipLock).
 		-- Intramurals locks per game instead (SportsServer / Talent Stage), so walking around the hall is fine.
-		if self.Id ~= "Intramurals" then player:SetAttribute("Lock_Event", true) end
+		-- LockMode "activity" (Tower, Booths, Foundation Day): the module locks only while you're actually
+		-- doing something (climbing, playing a booth, racing) via ctx:SetLock, so joining alone doesn't lock.
+		if self.Id ~= "Intramurals" and self.LockMode ~= "activity" then player:SetAttribute("Lock_Event", true) end
 		self.Scores[player] = self.Scores[player] or 0
-		Rewards.countJoin(player, def)
+		-- "events joined" counts once per event, even if the player leaves and joins again
+		self.Counted = self.Counted or {}
+		if not self.Counted[player] then self.Counted[player] = true Rewards.countJoin(player, def) end
 		Remotes.EventToast:FireClient(player, ("%s You joined %s!"):format(def.Icon or "🎪", def.Name))
 		EventManager.broadcast()
 		return true
 	end
 
+	-- Leave: the player stops taking part. Their equipment unlocks right away, their score for this
+	-- event is cleared (no rewards unless they join again), and the event module tidies up after them.
 	function ctx:Leave(player)
 		if not self.Participants[player] then return end
 		self.Participants[player] = nil
+		self.Scores[player] = nil
+		self.ScoreTime[player] = nil
 		if player.Parent then player:SetAttribute("Lock_Event", nil) end
 		if mod.OnPlayerLeft then pcall(mod.OnPlayerLeft, self, player) end
+		-- (no popup: the event's own panel just closes and the equipment comes back quietly)
+		markScores()
 		EventManager.broadcast()
 	end
 
 	function ctx:IsIn(player) return self.Participants[player] == true end
+
+	-- equipment lock for ONE player while the event keeps running (EquipLock reads Lock_Event)
+	function ctx:SetLock(player, on)
+		if self.Id == "Intramurals" or not player.Parent then return end
+		if on and not self.Participants[player] then return end
+		if (player:GetAttribute("Lock_Event") == true) ~= (on == true) then player:SetAttribute("Lock_Event", on and true or nil) end
+	end
+	-- the player finished THEIR part (reached the summit, escaped, booth game over...): equipment back right away.
+	-- They stay in the event (score + rewards kept).
+	function ctx:Done(player, msg)
+		local was = player:GetAttribute("Lock_Event") == true
+		self:SetLock(player, false)
+		if was and player.Parent then Remotes.EventToast:FireClient(player, msg or "🎒 You're done — your equipment is unlocked!") end
+	end
 
 	function ctx:AddScore(player, n)
 		if not self.Participants[player] then return end
@@ -432,6 +456,9 @@ Remotes.EventAction.OnServerInvoke = function(player, action, data)
 		lastGoto[player] = now
 		hum.Sit = false
 		local spot = ctx.GotoPosition or (ctx.Location + Vector3.new(math.random(-4, 4), 3, math.random(-4, 4)))
+		-- load the event area on the player's device first (no loading freeze when they land)
+		pcall(function() player:RequestStreamAroundAsync(spot, 4) end)
+		if not char.Parent or hum.Health <= 0 then return { ok = false } end
 		char:PivotTo(CFrame.new(spot))
 		return { ok = true, msg = "Teleported to " .. (ctx.LocationName or ctx.Def.Name) }
 	end

@@ -287,6 +287,17 @@ end
 
 function M.OnPlayerLeft(ctx, player)
 	setCharGroup(player.Character, "Default")
+	-- pressed Leave inside the quiz room: walk them out (you join by being in the room, so staying would re-join them)
+	local room = ctx.Data.roomBox and ctx.Data.roomBox[1]
+	local root = player.Parent and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if room and root and ctx.GotoPosition then
+		local cf, size = room:GetBoundingBox()
+		local rel = cf:PointToObjectSpace(root.Position)
+		if math.abs(rel.X) < size.X / 2 and math.abs(rel.Y) < size.Y / 2 and math.abs(rel.Z) < size.Z / 2 then
+			player.Character:PivotTo(CFrame.new(ctx.GotoPosition))
+		end
+	end
+	ctx:Send(player, { type = "left" })
 end
 
 function M.Finish(ctx)

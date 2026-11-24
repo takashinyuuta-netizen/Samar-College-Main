@@ -30,6 +30,10 @@ local GamesFolder = script.Parent:WaitForChild("BoothGames")
 local FAIR_CENTER = Vector3.new(143.1, 1, -61)
 local FAIR_NAME = "Open Hall (1F)"
 local GOTO = Vector3.new(184, 4.5, -61)
+-- three ways to start a booth: press E, click / tap the booth, or stand on the PLAY HERE mat for a moment
+local MAT_RADIUS = 2.8   -- how close to the middle of the mat counts as "on the mat"
+local MAT_HOLD = 1.5     -- seconds standing on the mat before the game starts by itself
+local PROMPT_RANGE = 7   -- E range, measured from the mat (short, so neighbouring booths / chairs don't fight over E)
 
 ---------------------------------------------------------------- sounds + animations
 M.SOUNDS = {
@@ -152,9 +156,36 @@ local function setStatus(B)
 		B.prompt.Enabled = false
 	else
 		B.title.Text = "🟢 OPEN — " .. B.g.Icon .. " " .. B.g.Name
-		B.sub.Text = "Stand on the mat and press E"
+		B.sub.Text = "Stand on the mat • E or click to play"
 		B.prompt.Enabled = true
 	end
+end
+
+---------------------------------------------------------------- keep-out zones (NO invisible walls)
+-- Invisible solid walls caught every click / tap (Roblox makes a solid part "queryable" even with CanQuery off),
+-- so balloons, moles etc. could not be clicked. Instead the server gently moves people out of:
+--   1) the stall itself (inside it or on its roof) — always, for everyone,
+--   2) the PLAY HERE mat while someone else is playing on it.
+local function addBarriers(B)
+	local old = B.model:FindFirstChild("Barriers") if old then old:Destroy() end
+	local mz = B.cf:PointToObjectSpace(B.spot.Position).Z
+	B.zone = { matFront = mz - 2.6, matBack = -3.95, matHalfW = 2.8, stallHalfW = 6.4, stallFront = -3.95, stallBack = 4.0, top = 16 }
+end
+local function setGuard(B, on) B.guardOn = on end
+-- true + a safe spot in front of the booth if this world position is somewhere it shouldn't be
+local function keepOutSpot(B, pos, isOccupant)
+	local z = B.zone
+	if not z then return nil end
+	local lp = B.cf:PointToObjectSpace(pos)
+	if lp.Y < -2 or lp.Y > z.top then return nil end
+	local inStall = math.abs(lp.X) <= z.stallHalfW and lp.Z > z.stallFront and lp.Z < z.stallBack
+	local onBusyMat = B.guardOn and not isOccupant and math.abs(lp.X) <= z.matHalfW and lp.Z >= z.matFront and lp.Z <= z.matBack
+	if not (inStall or onBusyMat) then return nil end
+	local x = math.clamp(lp.X, -z.stallHalfW + 1, z.stallHalfW - 1)
+	if onBusyMat or math.abs(x) <= z.matHalfW + 0.5 then x = (lp.X >= 0 and 1 or -1) * (z.matHalfW + 1.8) end -- beside the mat, not on it
+	local spot = B.cf * CFrame.new(x, 3.2, z.matFront - 1.5)
+	local face = B.cf * CFrame.new(x, 3.2, 0)
+	return CFrame.lookAt(spot.Position, Vector3.new(face.X, spot.Y, face.Z))
 end
 
 ---------------------------------------------------------------- occupy / release a booth
@@ -174,6 +205,7 @@ local function occupy(ctx, B, player)
 	local face = (B.cf * CFrame.new(0, 0, 4)).Position
 	ch:PivotTo(CFrame.lookAt(Vector3.new(spot.X, B.cf.Y + lift, spot.Z), Vector3.new(face.X, B.cf.Y + lift, face.Z)))
 	root.Anchored = true
+	setGuard(B, true) -- others can't step onto the mat while this player plays
 	-- animations everyone can see
 	B.tracks = {}
 	local animator = hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", hum)
@@ -209,6 +241,7 @@ local function occupy(ctx, B, player)
 end
 
 local function release(B)
+	setGuard(B, false)
 	local player = B.occupant
 	B.occupant = nil
 	if B.deathConn then B.deathConn:Disconnect() B.deathConn = nil end
@@ -245,9 +278,15 @@ function M.Setup(ctx)
 			local model = src:Clone() model.Parent = boothsFolder
 			local B = { id = id, g = g, model = model, cf = model:GetAttribute("BoothCF"), game = model:FindFirstChild("Game"),
 				spot = model.PlayerSpot, lamp = model.StatusLamp, counter = model.Stall.Counter, temps = {} }
+			-- the prompt sits on the PLAY HERE mat: E works (KeepE tells TapPrompts not to remove the key) and
+			-- clicking / tapping anywhere on the booth fires it too. Only the closest booth's prompt is shown.
 			local pp = Instance.new("ProximityPrompt") pp.Name = "PlayPrompt" pp.ActionText = "Play" pp.ObjectText = g.Icon .. " " .. g.Name
-			pp.HoldDuration = 0 pp.MaxActivationDistance = 11 pp.RequiresLineOfSight = false pp.Parent = B.counter
+			pp.HoldDuration = 0 pp.MaxActivationDistance = PROMPT_RANGE pp.RequiresLineOfSight = false
+			pp.KeyboardKeyCode = Enum.KeyCode.E pp.Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton
+			pp:SetAttribute("KeepE", true) pp:SetAttribute("ReachOverCounter", true)
+			pp.Parent = B.spot
 			B.prompt = pp
+			addBarriers(B)
 			makeBillboard(B)
 			setStatus(B)
 			ctx:Connect(pp.Triggered, function(player) M.play(ctx, player, B) end)
@@ -262,6 +301,7 @@ function M.Setup(ctx)
 	ctx:SetLocation(FAIR_CENTER, FAIR_NAME)
 	ctx.GotoPosition = GOTO
 	ctx.ScoreLabel = "Tickets 🎟️"
+	ctx.LockMode = "activity" -- equipment is locked only while you play a booth game
 	ctx.JoinMode = "button"
 	if RunService:IsStudio() then
 		-- Studio only: ServerStorage.BoothDebug:Invoke("click", "BalloonPop") clicks every target once
@@ -278,6 +318,69 @@ function M.Setup(ctx)
 		end
 	end
 	ctx:Connect(Players.PlayerRemoving, function(p) for _, B in pairs(ctx.Data.booths) do if B.occupant == p then B.session = nil release(B) end end end)
+	-- stand on the mat for MAT_HOLD seconds = the game starts by itself (one try per visit to the mat)
+	task.spawn(function()
+		local standing = {} -- [B] = { player = , t = , tried = }
+		while ctx.Folder and ctx.Folder.Parent do
+			task.wait(0.2)
+			-- keep-out: nobody inside a stall / on its roof, nobody on a mat someone else is playing on
+			for _, B in pairs(ctx.Data.booths) do
+				for _, p in ipairs(Players:GetPlayers()) do
+					local ch = p.Character
+					local r = ch and ch:FindFirstChild("HumanoidRootPart")
+					if r and p ~= B.occupant then
+						local cf = keepOutSpot(B, r.Position, false)
+						if cf then
+							local h = ch:FindFirstChildOfClass("Humanoid")
+							if h and h.Sit then h.Sit = false end
+							ch:PivotTo(cf)
+							if not B.lastToast or os.clock() - (B.lastToast[p] or 0) > 4 then
+								B.lastToast = B.lastToast or {}
+								B.lastToast[p] = os.clock()
+								ctx:Toast(p, B.occupant and ("⏳ " .. B.occupant.DisplayName .. " is playing — wait for your turn!") or "🎪 Stand on the mat in front of the booth to play!")
+							end
+						end
+					end
+				end
+			end
+			if ctx.Phase == "Active" then
+				for _, B in pairs(ctx.Data.booths) do
+					local st = standing[B]
+					if B.occupant then
+						-- remember the player: when their game ends they're still on the mat, so don't restart it by itself
+						standing[B] = { player = B.occupant, t = 0, tried = true }
+					else
+						-- who is on the mat (closest one)
+						local who, best = nil, MAT_RADIUS
+						local sp = B.spot.Position
+						for _, p in ipairs(Players:GetPlayers()) do
+							local r = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+							local h = p.Character and p.Character:FindFirstChildOfClass("Humanoid")
+							if r and h and h.Health > 0 and not ctx.Data.sessions[p] and math.abs(r.Position.Y - sp.Y) < 6 then
+								local d = (Vector3.new(r.Position.X, sp.Y, r.Position.Z) - sp).Magnitude
+								if d <= best then who, best = p, d end
+							end
+						end
+						if not who then
+							if st then standing[B] = nil setStatus(B) end
+						elseif not st or st.player ~= who then
+							standing[B] = { player = who, t = os.clock() }
+						elseif not st.tried then
+							local left = MAT_HOLD - (os.clock() - st.t)
+							if left <= 0 then
+								st.tried = true -- leave the mat and step back on to try again
+								setStatus(B)
+								task.spawn(M.play, ctx, who, B)
+							else
+								local dots = math.clamp(math.ceil((1 - left / MAT_HOLD) * 3), 1, 3)
+								B.sub.Text = "⏳ Starting " .. string.rep("●", dots) .. string.rep("○", 3 - dots)
+							end
+						end
+					end
+				end
+			end
+		end
+	end)
 end
 
 ---------------------------------------------------------------- play a booth
@@ -294,12 +397,13 @@ function M.play(ctx, player, B)
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 	if not root or (root.Position - B.spot.Position).Magnitude > 16 then return end
 	if not occupy(ctx, B, player) then return end
+	ctx:SetLock(player, true) -- equipment off while playing this booth
 	local s = { game = B.id, booth = B, tickets = 0 }
 	ctx.Data.sessions[player] = s
 	B.session = s
 	s.finish = function() M.closeSession(ctx, player, s) end
 	local ok, ui = pcall(B.g.Start, ctx, player, s, B, fx)
-	if not ok or type(ui) ~= "table" then warn("[Booth] start " .. B.id .. ": " .. tostring(ui)) ctx.Data.sessions[player] = nil B.session = nil release(B) return end
+	if not ok or type(ui) ~= "table" then warn("[Booth] start " .. B.id .. ": " .. tostring(ui)) ctx.Data.sessions[player] = nil B.session = nil release(B) ctx:SetLock(player, false) return end
 	ctx.Data.played[player] = true
 	ui.type = "boothOpen" ui.game = B.id ui.name = B.g.Name ui.icon = B.g.Icon ui.description = B.g.Description
 	-- a nice camera view behind the player, looking at the stall (the client moves the camera there)
@@ -333,6 +437,7 @@ function M.closeSession(ctx, player, s)
 		task.delay(2.5, function() for _, t in ipairs(temps) do if t.Parent then t:Destroy() end end end)
 	end
 	if player.Parent then ctx:Send(player, { type = "boothClose", game = s.game }) end
+	ctx:SetLock(player, false) -- booth game over: equipment back (walk to the next booth freely)
 end
 
 function M.OnAction(ctx, player, action, data)

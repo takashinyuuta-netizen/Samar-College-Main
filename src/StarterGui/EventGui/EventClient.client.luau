@@ -105,6 +105,16 @@ pill.BackgroundColor3 = Color3.fromRGB(25, 30, 38) pill.BackgroundTransparency =
 pill.TextScaled = true pill.Visible = false pill.AutoButtonColor = true pill.Parent = gui corner(pill, 15) stroke(pill, Color3.new(1,1,1), 0.75)
 do local c = Instance.new("UITextSizeConstraint") c.MaxTextSize = 16 c.Parent = pill local pad = Instance.new("UIPadding") pad.PaddingLeft = UDim.new(0, 10) pad.PaddingRight = UDim.new(0, 10) pad.Parent = pill end
 
+---------------------------------------------------------------- 🚪 Leave (always on screen while you're in an event)
+-- The banner's Leave button tucks away with the banner, so joined players also get this small button at the
+-- top of the screen. Leave any time, whatever your progress: your equipment unlocks right away.
+local leaveMini = Instance.new("TextButton") leaveMini.Name = "LeaveEvent" leaveMini.AnchorPoint = Vector2.new(0.5, 0)
+leaveMini.Position = UDim2.new(0.5, 0, 0, 12) leaveMini.Size = UDim2.fromOffset(150, 34) leaveMini.Visible = false
+leaveMini.BackgroundColor3 = Color3.fromRGB(150, 45, 45) leaveMini.BackgroundTransparency = 0.05 leaveMini.Font = FONT_B leaveMini.TextScaled = true
+leaveMini.TextColor3 = Color3.new(1, 1, 1) leaveMini.Text = "🚪 Leave event" leaveMini.AutoButtonColor = true leaveMini.ZIndex = 20 leaveMini.Parent = gui
+corner(leaveMini, 17) stroke(leaveMini, Color3.fromRGB(255, 170, 170), 0.35)
+do local c = Instance.new("UITextSizeConstraint") c.MaxTextSize = 17 c.Parent = leaveMini local pad = Instance.new("UIPadding") pad.PaddingLeft = UDim.new(0, 10) pad.PaddingRight = UDim.new(0, 10) pad.PaddingTop = UDim.new(0, 5) pad.PaddingBottom = UDim.new(0, 5) pad.Parent = leaveMini end
+
 ---------------------------------------------------------------- scoreboard
 local board = frame(gui, "Scoreboard", UDim2.new(0, 210, 0, 190), UDim2.new(1, -222, 0, 64)) -- top-right, clear of the mobile jump button
 corner(board, 12) stroke(board) board.Visible = false
@@ -339,8 +349,16 @@ local function render()
 	where.Text = "📍 " .. (state.locationName or "Campus") .. ("   👥 %d"):format(state.players or 0)
 	timer.Text = phaseText()
 	local canJoin = state.phase ~= "Results" and not state.joined
-	joinBtn.Visible = canJoin and state.joinMode ~= "zone"
-	joinBtn.Text = state.joined and "✅ Joined" or "✋ Join"
+	local canLeave = state.phase ~= "Results" and state.joined == true
+	if not canLeave then joinBtn:SetAttribute("Armed", nil) end
+	joinBtn.Visible = (canJoin and state.joinMode ~= "zone") or canLeave
+	if canLeave then
+		joinBtn.Text = joinBtn:GetAttribute("Armed") and "Sure? Tap" or "🚪 Leave"
+		joinBtn.TextColor3 = Color3.fromRGB(255, 140, 140)
+	else
+		joinBtn.Text = "✋ Join"
+		joinBtn.TextColor3 = Color3.fromRGB(140, 235, 165)
+	end
 	goBtn.Visible = state.phase ~= "Results" and state.location ~= nil
 	-- once you joined and the event is running, tuck the banner away (1 s on phones/tablets, 3 s on PC; the pill stays)
 	if state.joined and state.phase == "Active" and not autoTucked then
@@ -348,8 +366,13 @@ local function render()
 		local touch = game:GetService("UserInputService").TouchEnabled
 		task.delay(touch and 1 or 3, function() dismissed = true render() end)
 	end
-	banner.Visible = alertsOn() and not dismissed and state.phase ~= "Results"
+	banner.Visible = (alertsOn() or state.joined == true) and not dismissed and state.phase ~= "Results" -- joined players always get their banner (with Leave)
 	pill.Visible = not banner.Visible and state.phase ~= "Results"
+	-- 🚪 small Leave button whenever you're in the event and the banner (with its own Leave) is tucked away
+	if not canLeave then leaveMini:SetAttribute("Armed", nil) end
+	leaveMini.Visible = canLeave and not banner.Visible
+	leaveMini.Text = leaveMini:GetAttribute("Armed") and "Tap again to leave" or "🚪 Leave event"
+	leaveMini.Size = UDim2.fromOffset(leaveMini:GetAttribute("Armed") and 190 or 150, 34)
 	pill.Text = (state.icon or "🎪") .. " " .. (state.name or "") .. "  •  " .. phaseText()
 	-- scoreboard: during Active, if you joined or leaderboard updates are on
 	-- (Intramurals uses this board too now: 🏆 Intramural points, earned by playing any sports game)
@@ -406,8 +429,35 @@ local function act(action)
 	if ok and res and res.msg then toast(res.msg) end
 	return ok and res
 end
-joinBtn.MouseButton1Click:Connect(function() act("join") end)
+joinBtn.MouseButton1Click:Connect(function()
+	if state.joined then
+		-- leaving needs a second tap within 3 seconds (so nobody leaves by accident)
+		if joinBtn:GetAttribute("Armed") then
+			joinBtn:SetAttribute("Armed", nil)
+			act("leave")
+		else
+			joinBtn:SetAttribute("Armed", true)
+			render()
+			task.delay(3, function() if joinBtn:GetAttribute("Armed") then joinBtn:SetAttribute("Armed", nil) render() end end)
+		end
+		return
+	end
+	act("join")
+end)
 goBtn.MouseButton1Click:Connect(function() act("goto") end)
+-- same two-tap confirm as the banner's Leave
+leaveMini.MouseButton1Click:Connect(function()
+	if not state.joined then return end
+	if leaveMini:GetAttribute("Armed") then
+		leaveMini:SetAttribute("Armed", nil)
+		act("leave")
+		render()
+	else
+		leaveMini:SetAttribute("Armed", true)
+		render()
+		task.delay(3, function() if leaveMini:GetAttribute("Armed") then leaveMini:SetAttribute("Armed", nil) render() end end)
+	end
+end)
 closeBtn.MouseButton1Click:Connect(function() dismissed = true render() end)
 pill.MouseButton1Click:Connect(function() dismissed = false
 	if not alertsOn() then toast("Turn on Event Alerts in Settings to see the full banner") end render() end)

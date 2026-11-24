@@ -21,7 +21,7 @@ local GAMES = {
 	{ "🏸", "Badminton", "1F Hall", Color3.fromRGB(60, 200, 140) },
 	{ "🏓", "Table Tennis", "Sky Island", Color3.fromRGB(250, 170, 60) },
 	{ "🥒", "Pickleball", "Sky Island", Color3.fromRGB(150, 210, 60) },
-	{ "🏐", "Volleyball", "Campus Court", Color3.fromRGB(70, 150, 255) },
+	{ "🏐", "Volleyball", "Sky Island", Color3.fromRGB(70, 150, 255) },
 	{ "🏀", "Basketball 3v3", "Sky Island", Color3.fromRGB(235, 95, 45) },
 	{ "🏀", "Basketball 5v5", "Sky Arena", Color3.fromRGB(255, 150, 40) },
 	{ "♟️", "Chess", "2F Library", Color3.fromRGB(170, 120, 230) },

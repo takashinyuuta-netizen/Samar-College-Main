@@ -5,7 +5,9 @@
   • Everyone (even spectators) sees strokes on the world board "Canvas" in the event folder.
   • Players who did NOT join get a small "📺 Watch" button: it opens the same panel in watch mode
     (drawing, hint, timer and the guesses feed — no guessing). The board in the classroom is
-    re-synced when it streams in, so you never see a half-empty drawing. ]]
+    re-synced when it streams in, so you never see a half-empty drawing.
+  • SAFETY: 🚫 Hide = vote to hide a bad drawing (server clears it after enough votes).
+    🙈 = stop showing other players' drawings to ME (panel + classroom board) until turned back on. ]]
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local UIS = game:GetService("UserInputService")
@@ -71,6 +73,16 @@ local box = Instance.new("TextBox") box.Name = "GuessBox" box.Size = UDim2.fromO
 box.Text = "" box.Font = Enum.Font.Gotham box.TextScaled = true box.ClearTextOnFocus = false box.BackgroundColor3 = Color3.fromRGB(240, 240, 240) box.TextColor3 = Color3.new(0,0,0) box.Parent = panel corner(box, 8)
 local sendBtn = Instance.new("TextButton") sendBtn.Name = "Send" sendBtn.Size = UDim2.fromOffset(64, 34) sendBtn.Position = UDim2.fromOffset(486, 284) sendBtn.Text = "Guess"
 sendBtn.Font = Enum.Font.GothamBold sendBtn.TextScaled = true sendBtn.TextColor3 = Color3.new(1,1,1) sendBtn.BackgroundColor3 = PINK sendBtn.Parent = panel corner(sendBtn, 8)
+
+-- 🚫 hide vote + 🙈 don't show drawings (everyone except the drawer)
+local hideBtn = Instance.new("TextButton") hideBtn.Name = "HideVote" hideBtn.Size = UDim2.fromOffset(78, 22) hideBtn.Position = UDim2.fromOffset(472, 66)
+hideBtn.Text = "🚫 Hide" hideBtn.Font = Enum.Font.GothamBold hideBtn.TextScaled = true hideBtn.TextColor3 = Color3.new(1, 1, 1)
+hideBtn.BackgroundColor3 = Color3.fromRGB(190, 60, 60) hideBtn.Visible = false hideBtn.Parent = panel corner(hideBtn, 6)
+local eyeBtn = Instance.new("TextButton") eyeBtn.Name = "HideAll" eyeBtn.Size = UDim2.fromOffset(34, 22) eyeBtn.Position = UDim2.fromOffset(434, 66)
+eyeBtn.Text = "👁" eyeBtn.Font = Enum.Font.GothamBold eyeBtn.TextScaled = true eyeBtn.TextColor3 = Color3.new(1, 1, 1)
+eyeBtn.BackgroundColor3 = Color3.fromRGB(70, 75, 85) eyeBtn.Visible = false eyeBtn.Parent = panel corner(eyeBtn, 6)
+local hideOthers = false   -- 🙈 on: other players' drawings are not shown to me
+local botRound, voted = false, false
 
 -- 📺 watch mode (players who didn't join)
 local spectator = false
@@ -142,7 +154,9 @@ local function drawPolyline(container, pts, color, w)
 	end
 end
 
+local isDrawer -- (set below)
 local function drawStroke(d, panelToo)
+	if hideOthers and not isDrawer and not botRound then return end
 	local c = COLORS[d.c] or COLORS[1]
 	if panelToo then drawPolyline(panelStrokes, d.pts, c, (d.w or 2) * 2) end
 	local ws = worldStrokes()
@@ -156,7 +170,8 @@ local function clearAll()
 end
 
 ---------------------------------------------------------------- drawing input (drawer only)
-local isDrawer, drawing, last, buffer = false, false, nil, {}
+isDrawer = false
+local drawing, last, buffer = false, nil, {}
 local function canvasPoint(input)
 	local p, s = canvas.AbsolutePosition, canvas.AbsoluteSize
 	return math.clamp((input.Position.X - p.X) / s.X, 0, 1), math.clamp((input.Position.Y - p.Y) / s.Y, 0, 1)
@@ -219,6 +234,21 @@ box.FocusLost:Connect(function(enter) if enter then submit() end end)
 
 ---------------------------------------------------------------- server messages
 local roundEnds = 0
+local function safetyButtons(active)
+	-- only for people who aren't drawing, and not when the 🤖 Art Bot draws
+	local show = active and not isDrawer and not botRound
+	hideBtn.Visible = show
+	eyeBtn.Visible = active and not isDrawer
+	hideBtn.Text = voted and "✔ Voted" or "🚫 Hide"
+	hideBtn.AutoButtonColor = not voted
+end
+hideBtn.MouseButton1Click:Connect(function()
+	if voted or isDrawer then return end
+	voted = true safetyButtons(true)
+	local ok, res = pcall(function() return Remotes.EventAction:InvokeServer("hideVote") end)
+	if ok and type(res) == "table" and res.msg then addFeed(res.msg, Color3.fromRGB(255, 160, 160)) end
+	if not (ok and type(res) == "table" and res.ok) and not (ok and res and res.msg and res.msg:find("already")) then voted = false safetyButtons(roundEnds > 0) end
+end)
 Remotes.EventData.OnClientEvent:Connect(function(d)
 	if type(d) ~= "table" or d.event ~= "GuessTheDrawing" then return end
 	if d.type == "stroke" then
@@ -226,8 +256,18 @@ Remotes.EventData.OnClientEvent:Connect(function(d)
 	elseif d.type == "clear" then
 		clearAll()
 		if d.hide then panel.Visible = false isDrawer = false setSpectator(false) watchOpen = false end
+	elseif d.type == "left" then
+		-- pressed 🚪 Leave: close the panel; the small 📺 Watch button stays so they can still look
+		isDrawer = false drawing = false tools.Visible = false
+		watchOpen = false
+		setSpectator(true)
+		safetyButtons(false)
+	elseif d.type == "hidden" then
+		addFeed(d.text or "🚫 The drawing was hidden", Color3.fromRGB(255, 160, 160))
+		hideBtn.Visible = false
 	elseif d.type == "round" and d.spectator then
 		isDrawer = false
+		botRound = tostring(d.drawer):find("Art Bot") ~= nil voted = false
 		setSpectator(true)
 		header.Text = ("📺 Round %d / %d • %s is drawing"):format(d.round or 1, d.rounds or 1, d.drawer)
 		wordLbl.Text = d.hint or ""
@@ -237,6 +277,7 @@ Remotes.EventData.OnClientEvent:Connect(function(d)
 		setSpectator(false)
 		panel.Visible = true
 		isDrawer = d.isDrawer
+		botRound = tostring(d.drawer):find("Art Bot") ~= nil voted = false
 		tools.Visible = isDrawer
 		box.Visible = not isDrawer sendBtn.Visible = not isDrawer box.TextEditable = true
 		header.Text = ("🎨 Round %d / %d • %s %s"):format(d.round or 1, d.rounds or 1, d.drawer, isDrawer and "(you!)" or "is drawing")
@@ -251,6 +292,7 @@ Remotes.EventData.OnClientEvent:Connect(function(d)
 		isDrawer = false tools.Visible = false
 		wordLbl.Text = "The word was: " .. string.upper(d.word or "")
 		roundEnds = 0
+		safetyButtons(false)
 	end
 end)
 
@@ -273,6 +315,17 @@ local function sync(panelToo)
 	end
 end
 watchBtn.MouseButton1Click:Connect(function() task.spawn(sync, true) end)
+eyeBtn.MouseButton1Click:Connect(function()
+	hideOthers = not hideOthers
+	eyeBtn.Text = hideOthers and "🙈" or "👁"
+	eyeBtn.BackgroundColor3 = hideOthers and Color3.fromRGB(200, 130, 40) or Color3.fromRGB(70, 75, 85)
+	if hideOthers then
+		clearAll()
+		addFeed("🙈 Other players' drawings are hidden for you. Tap again to show them.", Color3.fromRGB(255, 210, 90))
+	else
+		lastSync = 0 task.spawn(sync, true)
+	end
+end)
 local eventOn = false
 Remotes.EventState.OnClientEvent:Connect(function(st)
 	eventOn = st.active and st.id == "GuessTheDrawing" and st.phase == "Active"
@@ -293,6 +346,7 @@ end)
 task.spawn(function()
 	while true do
 		task.wait(0.25)
+		if panel.Visible and roundEnds > 0 then safetyButtons(true) elseif roundEnds <= 0 then hideBtn.Visible = false eyeBtn.Visible = false end
 		if (panel.Visible or spectator) and roundEnds > 0 then timerLbl.Text = ("⏱ %d s left"):format(math.max(0, math.ceil(roundEnds - os.clock()))) else timerLbl.Text = "" end
 	end
 end)

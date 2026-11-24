@@ -164,6 +164,48 @@ task.spawn(function()
 	end
 end)
 
+---------------------------------------------------------------- camera guard: the tower's GLASS walls stop the camera
+-- Roblox's camera only stops at walls that are mostly solid (under 25% see-through). The tower walls are glass
+-- (55% see-through), so the camera slid outside the tower. Here the camera is pulled back in front of any tower
+-- wall between your character and the camera. Only the tower's own "Wall" parts count.
+local RunService = game:GetService("RunService")
+local walls, wallsFrom = {}, nil
+local function towerFolder()
+	local zones = workspace:FindFirstChild("SamarCollege_Campus") and workspace.SamarCollege_Campus:FindFirstChild("EventZones")
+	local live = zones and zones:FindFirstChild("Live")
+	return live and live:FindFirstChild("SummitTower", true)
+end
+local lastScan = 0
+RunService:BindToRenderStep("TowerCameraGuard", Enum.RenderPriority.Camera.Value + 1, function()
+	-- refresh the wall list now and then (the tower is built when the event starts, and streams in)
+	if os.clock() - lastScan > 2 then
+		lastScan = os.clock()
+		local t = towerFolder()
+		if t ~= wallsFrom or (t and #walls == 0) then
+			wallsFrom = t
+			walls = {}
+			if t then for _, d in ipairs(t:GetDescendants()) do if d:IsA("BasePart") and d.Name == "Wall" then table.insert(walls, d) end end end
+		end
+	end
+	if #walls == 0 then return end
+	local cam = workspace.CurrentCamera
+	if cam.CameraType ~= Enum.CameraType.Custom then return end
+	local focus = cam.Focus.Position
+	local camPos = cam.CFrame.Position
+	local dir = camPos - focus
+	if dir.Magnitude < 0.5 then return end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = walls
+	local hit = workspace:Raycast(focus, dir, params)
+	if hit then
+		-- stop just in front of the glass, on your side of it
+		local newPos = hit.Position - dir.Unit * 0.6
+		cam.CFrame = cam.CFrame + (newPos - camPos)
+	end
+end)
+
 Remotes.EventState.OnClientEvent:Connect(function(s)
-	if not s.active or s.id ~= "TowerGame" or s.phase == "Results" then hud.Visible = false running = false musicOn(false) end
+	-- also hide it when you're not (or no longer) in the event, e.g. after pressing 🚪 Leave
+	if not s.active or s.id ~= "TowerGame" or s.phase == "Results" or not s.joined then hud.Visible = false running = false musicOn(false) end
 end)

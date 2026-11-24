@@ -725,6 +725,7 @@ function M.Setup(ctx)
 	ctx.GotoPosition = Vector3.new(186, FLOOR + 3, STAGE_Z - 4)
 	ctx.ScoreLabel = "Celebration points 🎉"
 	ctx.JoinMode = "button"
+	ctx.LockMode = "activity" -- a festival: equipment is locked only while you're in a sack race heat
 end
 
 ---------------------------------------------------------------- PAGEANT
@@ -941,6 +942,7 @@ function M.joinSack(ctx, player, lane)
 	for _, r in pairs(s.racers) do if r.player == player then return ctx:Toast(player, "🥔 You are already in a lane") end end
 	if s.racers[lane] then return ctx:Toast(player, "🥔 That lane is taken — pick another one") end
 	s.racers[lane] = { player = player }
+	ctx:SetLock(player, true) -- equipment off for the race
 	D.lanes[lane].label.Text = player.DisplayName
 	ctx:Toast(player, ("🥔 You're in lane %d! Hop to the finish when it says GO."):format(lane))
 	ctx:AddScore(player, D.cfg.Points.SackJoin)
@@ -983,6 +985,7 @@ function M.sackFinish(ctx, player)
 	ctx:ToastAll(("🏁 %s finished the sack race #%d%s"):format(player.DisplayName, place, pts and (" (+" .. pts .. ")") or ""))
 	setRacerSpeed(player, false)
 	local sack = player.Character and player.Character:FindFirstChild("FD_Sack") if sack then sack:Destroy() end
+	ctx:Done(player, "🎒 Race finished — your equipment is unlocked!")
 end
 local function runSackHeat(ctx, heat)
 	local D = ctx.Data
@@ -1022,6 +1025,7 @@ local function runSackHeat(ctx, heat)
 		if r.player.Parent then
 			setRacerSpeed(r.player, false)
 			local sack = r.player.Character and r.player.Character:FindFirstChild("FD_Sack") if sack then sack:Destroy() end
+			ctx:Done(r.player, "🎒 Heat over — your equipment is unlocked!")
 		end
 	end
 	D.sackGate.CanCollide = true D.sackGate.Transparency = 0.6
@@ -1299,6 +1303,22 @@ function M.Finish(ctx)
 	end
 	ctx.WinnerText = ("🎉 Happy Founding Anniversary! %d/%d decorations hung."):format(D.decorated or 0, #DECO_SPOTS)
 	ctx:Broadcast({ type = "hide" })
+end
+function M.OnPlayerLeft(ctx, player)
+	local D = ctx.Data
+	local s = D and D.sack
+	if s and s.racers then
+		for lane, r in pairs(s.racers) do
+			if r.player == player then
+				s.racers[lane] = nil
+				local l = D.lanes and D.lanes[lane]
+				if l and l.label then l.label.Text = "LANE " .. lane end
+			end
+		end
+	end
+	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if hum and hum:GetAttribute("FD_PrevSpeed") then setRacerSpeed(player, false) end
+	local sack = player.Character and player.Character:FindFirstChild("FD_Sack") if sack then sack:Destroy() end
 end
 function M.Cleanup(ctx)
 	local D = ctx.Data

@@ -119,12 +119,13 @@ Remotes.EventData.OnClientEvent:Connect(function(d)
 	if d.type == "lobby" then showLobby(d)
 	elseif d.type == "question" then showQuestion(d)
 	elseif d.type == "reveal" then showReveal(d)
-	elseif d.type == "done" then showDone(d) end
+	elseif d.type == "done" then showDone(d)
+	elseif d.type == "left" then panel.Visible = false end -- pressed 🚪 Leave
 end)
 
 -- hide the panel when the event is over / gone
 Remotes.EventState.OnClientEvent:Connect(function(s)
 	if not s.active or s.id ~= "QuizBee" or not s.joined then
-		if panel.Visible and (not s.active or s.id ~= "QuizBee") then panel.Visible = false end
+		if panel.Visible and (not s.active or s.id ~= "QuizBee" or not s.joined) then panel.Visible = false end
 	end
 end)

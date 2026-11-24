@@ -235,7 +235,7 @@ local function computePath(from, to)
 end
 
 ---------------------------------------------------------------- patrol NPCs
-local TEMPLATES = { Guard = "Guard", Teacher = "CanteenManagerNPC" } -- NPC model names in the place file (one renamed in this public repo)
+local TEMPLATES = { Guard = "Guard", Teacher = "Ma'am Carlota" }
 
 local function setupAnimations(n)
 	local animator = n.hum:FindFirstChildOfClass("Animator") or Instance.new("Animator", n.hum)
@@ -541,7 +541,14 @@ function M.unlock(ctx, player)
 	ctx:AddScore(player, math.max(50, 500 - (place - 1) * 25))
 	ctx:ToastAll(("🏃 %s unlocked the Main Gate and ESCAPED! (#%d)"):format(player.DisplayName, place))
 	M.sendHud(ctx, player, { escapedNow = true, place = place })
-	if player.Character then player.Character:PivotTo(CFrame.new(ctx.Data.outside)) end
+	if player.Character then
+		local outside = ctx.Data.outside
+		task.spawn(function() -- load the outside area first, then move them (no loading freeze)
+			pcall(function() player:RequestStreamAroundAsync(outside, 3) end)
+			if player.Character then player.Character:PivotTo(CFrame.new(outside)) end
+		end)
+	end
+	ctx:Done(player, "🎒 You escaped — your equipment is unlocked!")
 	local all = true
 	for p in pairs(ctx.Participants) do if p.Parent and not ctx.Data.escaped[p] then all = false end end
 	if all then task.delay(4, function() ctx:End("done") end) end
@@ -554,7 +561,14 @@ function M.Start(ctx)
 	task.spawn(senses, ctx)
 end
 
-function M.OnPlayerLeft(ctx, p) ctx.Data.detained[p] = nil end
+function M.OnPlayerLeft(ctx, p)
+	if ctx.Data.detained[p] then
+		local hum = p.Character and p.Character:FindFirstChildOfClass("Humanoid")
+		if hum then hum.WalkSpeed = game.StarterPlayer.CharacterWalkSpeed hum.JumpHeight = game.StarterPlayer.CharacterJumpHeight end
+	end
+	ctx.Data.detained[p] = nil
+	ctx:Send(p, { type = "keys", hide = true })
+end
 
 function M.Finish(ctx)
 	ctx.Ranking = table.clone(ctx.Data.order)

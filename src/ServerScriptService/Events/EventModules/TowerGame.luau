@@ -121,6 +121,7 @@ local function win(ctx, p)
 	if r.floor < ctx.Data.floors then return end
 	local time = os.clock() - r.start
 	ctx.Data.runs[p] = nil
+	ctx:Done(p, "🎒 Summit reached — your equipment is unlocked!")
 	ctx.Data.cooldown[p] = os.clock() + ctx.Config.TowerGame.ReturnDelay + 2
 	local wins = (tonumber(p:GetAttribute("TowerWins")) or 0) + 1
 	p:SetAttribute("TowerWins", wins)
@@ -148,7 +149,15 @@ local function win(ctx, p)
 end
 
 ---------------------------------------------------------------- leaderboard board
+-- The board itself is drawn by StarterPlayerScripts.ScrollBoards (top 50, scrollable) from
+-- ReplicatedStorage.Leaderboards.Tower / .TowerWins (LeaderboardServer reloads them every 5 min).
+-- After a summit we just ask LeaderboardServer to republish so the new time / win shows right away.
+local SSS = game:GetService("ServerScriptService")
 function M.refreshBoard(ctx)
+	local bump = SSS:FindFirstChild("LeaderboardBump")
+	if bump then bump:Fire("Tower") bump:Fire("TowerWins") end
+end
+function M.refreshBoardOld(ctx)
 	local board = ctx.Data.boardText
 	if not board then return end
 	local fastest, most = {}, {}
@@ -545,23 +554,18 @@ function M.Setup(ctx)
 	sign(startSign, Enum.NormalId.Front, "⏱ Timer starts when you walk in!\n🟥 Red = damage • 🚩 checkpoints every 3 floors", Color3.fromRGB(25, 30, 38), Color3.new(1, 1, 1))
 	local board = part(tower, "Leaderboard", Vector3.new(18, 12, 0.6), CFrame.new(C + Vector3.new(16, 7, -(G.HALF + 13))) * CFrame.Angles(0, math.rad(20), 0), Color3.fromRGB(25, 30, 38))
 	for _, x in ipairs({ -7, 7 }) do part(tower, "BoardLeg", Vector3.new(0.6, 7, 0.6), board.CFrame * CFrame.new(x, -9, 0), Color3.fromRGB(60, 60, 66), Enum.Material.Metal) end
-	local g = Instance.new("SurfaceGui") g.Face = Enum.NormalId.Front g.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud g.PixelsPerStud = 30 g.Parent = board
-	local function lab(text, pos, size, font, col, align)
-		local l = Instance.new("TextLabel") l.Text = text l.Position = pos l.Size = size l.BackgroundTransparency = 1 l.Font = font l.TextColor3 = col
-		l.TextScaled = true l.TextXAlignment = align or Enum.TextXAlignment.Center l.TextYAlignment = Enum.TextYAlignment.Top l.Parent = g return l
-	end
-	lab("🗼 SUMMIT LEADERBOARD", UDim2.fromScale(0.03, 0.02), UDim2.fromScale(0.94, 0.12), Enum.Font.GothamBlack, Color3.fromRGB(255, 220, 110))
-	lab("⏱ FASTEST CLIMBERS", UDim2.fromScale(0.03, 0.16), UDim2.fromScale(0.45, 0.07), Enum.Font.GothamBold, Color3.fromRGB(140, 220, 255))
-	lab("🏆 MOST WINS", UDim2.fromScale(0.52, 0.16), UDim2.fromScale(0.45, 0.07), Enum.Font.GothamBold, Color3.fromRGB(140, 230, 160))
-	ctx.Data.boardText = {
-		fast = lab("", UDim2.fromScale(0.03, 0.25), UDim2.fromScale(0.45, 0.66), Enum.Font.Gotham, Color3.new(1, 1, 1), Enum.TextXAlignment.Left),
-		wins = lab("", UDim2.fromScale(0.52, 0.25), UDim2.fromScale(0.45, 0.66), Enum.Font.Gotham, Color3.new(1, 1, 1), Enum.TextXAlignment.Left),
-		note = lab("", UDim2.fromScale(0.03, 0.92), UDim2.fromScale(0.94, 0.06), Enum.Font.Gotham, Color3.fromRGB(170, 175, 185)),
-	}
+	-- top-50 scrollable board (drawn on each player's screen by StarterPlayerScripts.ScrollBoards)
+	board:SetAttribute("SB_Title", "🗼 SUMMIT LEADERBOARD")
+	board:SetAttribute("SB_Face", "Front")
+	board:SetAttribute("SB_Color", Color3.fromRGB(255, 205, 80))
+	board:SetAttribute("SB_LeftKey", "Tower") board:SetAttribute("SB_LeftLabel", "⏱️ Fastest Climbers") board:SetAttribute("SB_LeftFmt", "ms")
+	board:SetAttribute("SB_RightKey", "TowerWins") board:SetAttribute("SB_RightLabel", "🏆 Most Summits") board:SetAttribute("SB_RightFmt", "wins")
+	game:GetService("CollectionService"):AddTag(board, "ScrollBoard")
 	task.spawn(M.refreshBoard, ctx)
 	ctx:SetLocation(C, "Courtyard • Summit Tower")
 	ctx.GotoPosition = ctx.Data.lobby + Vector3.new(0, 3, 0)
 	ctx.ScoreLabel = "Summits this tower 🏆"
+	ctx.LockMode = "activity" -- equipment is locked only while you climb (see the Start loop)
 	ctx.JoinMode = "button"
 end
 
@@ -625,6 +629,8 @@ function M.Start(ctx)
 				elseif ctx.Data.runs[p] then
 					resetRun(ctx, p, nil)
 				end
+				-- equipment: locked while climbing, free otherwise (lobby, after the summit, after leaving the tower)
+				if ctx:IsIn(p) then ctx:SetLock(p, ctx.Data.runs[p] ~= nil) end
 			end
 			refresh += 0.2
 			if refresh >= cfg.LeaderboardRefresh then refresh = 0 task.spawn(M.refreshBoard, ctx) end
@@ -633,7 +639,20 @@ function M.Start(ctx)
 	end)
 end
 
-function M.OnPlayerLeft(ctx, p) ctx.Data.runs[p] = nil end
+function M.OnPlayerLeft(ctx, p)
+	ctx.Data.runs[p] = nil
+	if p.Parent then ctx:Send(p, { type = "tower", hide = true }) end -- close the timer / floor HUD
+	-- pressed Leave inside the tower: put them back in the lobby, or the next tick would start a new climb (and re-join them)
+	if p.Parent and ctx.Data.C and ctx.Data.lobby then
+		local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+		local rel = root and (root.Position - ctx.Data.C)
+		local HALF = ctx.Data.G and ctx.Data.G.HALF or 32
+		if rel and math.abs(rel.X) < HALF + 1 and math.abs(rel.Z) < HALF + 1 then
+			ctx.Data.cooldown[p] = os.clock() + 3
+			teleport(ctx, p, ctx.Data.lobby + Vector3.new(0, 3, 0))
+		end
+	end
+end
 
 function M.Finish(ctx)
 	local list = {}
@@ -658,7 +677,11 @@ function M.Cleanup(ctx)
 	for _, p in ipairs(Players:GetPlayers()) do
 		local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
 		if root and C and G and (root.Position - C).Y > 6 and math.abs(root.Position.X - C.X) < G.HALF + 4 and math.abs(root.Position.Z - C.Z) < G.HALF + 4 then
-			p.Character:PivotTo(CFrame.new(ctx.Data.lobby + Vector3.new(0, 3, 0)))
+			local lobby = ctx.Data.lobby + Vector3.new(0, 3, 0)
+			task.spawn(function() -- load the lobby first, then move them down (no loading freeze)
+				pcall(function() p:RequestStreamAroundAsync(lobby, 3) end)
+				if p.Character then p.Character:PivotTo(CFrame.new(lobby)) end
+			end)
 		end
 		local hum = p.Character and p.Character:FindFirstChildOfClass("Humanoid")
 		if hum and hum.Health > 0 then hum.Health = hum.MaxHealth end
