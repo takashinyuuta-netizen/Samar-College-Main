@@ -153,7 +153,7 @@ local function makePage(name, order)
 	local sf = Instance.new("ScrollingFrame") sf.Name = name sf.Size = UDim2.fromScale(1, 1) sf.BackgroundTransparency = 1 sf.BorderSizePixel = 0
 	sf.ScrollBarThickness = 6 sf.AutomaticCanvasSize = Enum.AutomaticSize.Y sf.CanvasSize = UDim2.new() sf.Visible = false sf.Parent = pages
 	pad(sf, 12) list(sf, 10)
-	local b = button(tabsBar, name, C.card, UDim2.fromOffset(101, 32), { LayoutOrder = order, TextSize = 12 })
+	local b = button(tabsBar, name, C.card, UDim2.fromOffset(86, 32), { LayoutOrder = order, TextSize = 12, TextWrapped = true })
 	pageFrames[name] = sf tabButtons[name] = b
 	b.MouseButton1Click:Connect(function() showPageRef(name) end)
 	return sf
@@ -198,6 +198,45 @@ local pItems = makePage("Items", 3)
 local pStats = makePage("Events & Stats", 4)
 local pPowers = makePage("Powers", 5)
 local pAdmins = makePage("Admins", 6)
+local pAnnounce = makePage("📢 Announce", 7)
+
+---------------------------------------------------------------- 📢 Announce: big text in the middle of everyone's screen
+do
+	local MAX = 150
+	local c = cardSection(pAnnounce, "📢  ANNOUNCEMENT", 1)
+	label(c, "Shows as big text in the middle of every player's screen (text only, no background) for a few seconds. Roblox filters it first. Max " .. MAX .. " characters.", 13, Enum.Font.Gotham, C.dim)
+	local box = textbox(c, "Type your announcement…", UDim2.new(1, 0, 0, 70))
+	box.TextWrapped = true box.TextYAlignment = Enum.TextYAlignment.Top
+	local countL = label(c, "0 / " .. MAX, 12, Enum.Font.GothamBold, C.dim)
+	box:GetPropertyChangedSignal("Text"):Connect(function()
+		local n = utf8.len(box.Text) or #box.Text
+		if n > MAX then box.Text = box.Text:sub(1, (utf8.offset(box.Text, MAX + 1) or (MAX + 1)) - 1) n = MAX end
+		countL.Text = n .. " / " .. MAX
+		countL.TextColor3 = n >= MAX and C.gold or C.dim
+	end)
+	local r = row(c, 36)
+	local busy = false
+	local function send(scope)
+		if busy then return end
+		busy = true
+		local res = call("announce", { text = box.Text, scope = scope })
+		busy = false
+		notify(res.msg or (res.ok and "Sent" or "Couldn't send"), res.ok == true)
+		if res.ok then box.Text = "" end
+	end
+	button(r, "📢  This server", C.green2, UDim2.fromOffset(170, 34)).MouseButton1Click:Connect(function() send("server") end)
+	button(r, "🌍  All servers", C.blue, UDim2.fromOffset(170, 34)).MouseButton1Click:Connect(function() send("global") end)
+end
+
+-- 🧹 Guess the Drawing: clear a bad drawing right away
+do
+	local c = cardSection(pMod, "🧹  Clear Guess the Drawing board", 99)
+	label(c, "Clears the drawing for everyone in this server, ends the round, and stops that player from drawing again in this server. A report is saved in 🚩 Reports.", 12, Enum.Font.Gotham, C.dim)
+	button(c, "🧹  Clear board now", C.red, UDim2.fromOffset(190, 34)).MouseButton1Click:Connect(function()
+		local res = call("clearDrawing", {})
+		notify(res.msg or (res.ok and "Cleared" or "Couldn't clear"), res.ok == true)
+	end)
+end
 
 -- MODERATION
 local kickCard = cardSection(pMod, "👢  Kick from server", 1)
@@ -263,7 +302,7 @@ local STAT_NAMES = { EventsCommon = "Common events joined", EventsRare = "Rare e
 	EventsParkour = "Parkour events joined", EventsEscape = "Escape events joined", EventsPhotobooth = "Photobooth events joined" }
 local STAT_ICONS = { EventsCommon = "🎪", EventsRare = "💎", QuizzesPassed = "📝", EventsParkour = "🏃", EventsEscape = "🚪", EventsPhotobooth = "📸" }
 local statCard = cardSection(pStats, "🏆  Events & activity counts", 1)
-label(statCard, "Type any number. 'Events joined' on the Profile becomes the total of the five event types.", 12, Enum.Font.Gotham, C.dim)
+local statCardNote = label(statCard, "Type any number, then press Save. 'Events joined' on the Profile becomes the total of the five event types.", 12, Enum.Font.Gotham, C.dim)
 local statBoxes = {}
 
 -- POWERS (instant, players in this server only)
@@ -297,6 +336,19 @@ powerRow("invisible", "👻  Invisible", "Hides the player's whole avatar and na
 powerRow("god", "🛡  God mode", "The player can't take damage or die.", false, nil, 3)
 powerRow("fly", "🕊  Fly", "Fly with WASD / thumbstick. Space or E = up, Ctrl or Q = down. Look up/down to climb or dive.", true, 50, 4)
 powerRow("speed", "💨  Speed", "Sets walk speed (normal is 16). Turn OFF to go back to normal.", true, 32, 5)
+do
+	local card = cardSection(pPowers, "🧭  Quick actions", 6)
+	label(card, "One-click actions for the selected player (they must be in this server).", 12, Enum.Font.Gotham, C.dim)
+	local r = row(card, 34)
+	for i, a in ipairs({ { "bring", "📍 Bring to me", C.blue }, { "respawn", "🔄 Respawn", C.card }, { "heal", "❤ Heal", C.green2 } }) do
+		local b = button(r, a[2], a[3], UDim2.fromOffset(140, 32), { TextSize = 13, LayoutOrder = i })
+		b.MouseButton1Click:Connect(function()
+			if not target then notify("Select a player first", false) return end
+			local r2 = call("power", { userId = target.userId, power = a[1], on = true })
+			notify(r2.msg, r2.ok)
+		end)
+	end
+end
 
 -- ADMINS
 local adminCard = cardSection(pAdmins, "👥  Co-admins", 1)
@@ -333,14 +385,47 @@ local function buildFromMeta()
 			itemRows[cat][it.Id] = entry
 		end
 	end
-	for i, s in ipairs(META.stats) do
-		local r = row(statCard, 34, i)
-		label(r, STAT_ICONS[s] .. "  " .. (STAT_NAMES[s] or s), 14, Enum.Font.GothamBold, C.text, { Size = UDim2.fromOffset(260, 34), TextWrapped = false })
+	local function statRow(card, s, title, icon, i)
+		local r = row(card, 34, i)
+		label(r, (icon or "•") .. "  " .. (title or s), 14, Enum.Font.GothamBold, C.text, { Size = UDim2.fromOffset(260, 34), TextWrapped = false })
 		local box = textbox(r, "0", UDim2.fromOffset(120, 34), true)
 		local note = label(r, "", 12, Enum.Font.Gotham, C.dim, { Size = UDim2.fromOffset(180, 34), TextWrapped = false })
 		statBoxes[s] = { box = box, note = note }
 		box.FocusLost:Connect(function() if target and box.Text ~= "" then stage("stats", s, tonumber(box.Text)) refreshPages() end end)
 	end
+	if META.statGroups then
+		for gi, g in ipairs(META.statGroups) do
+			local card = statCard
+			if gi == 1 then
+				local t = statCard:FindFirstChildWhichIsA("TextLabel")
+				if t and t ~= statCardNote and t.Text:find("Events & activity") then t.Text = g.title end
+				statCardNote.Text = "Type any number, then press Save. " .. (g.note or "")
+			else
+				card = cardSection(pStats, g.title, gi)
+				label(card, g.note or "", 12, Enum.Font.Gotham, C.dim)
+			end
+			for i, st in ipairs(g.stats) do statRow(card, st[1], st[2], st[3], i) end
+		end
+	else
+		for i, s in ipairs(META.stats) do statRow(statCard, s, STAT_NAMES[s], STAT_ICONS[s], i) end
+	end
+	-- 🔄 quick resets: they fill in the boxes (0) — press 💾 Save Changes to apply (leaderboards update too)
+	local quick = cardSection(pStats, "🔄  Quick reset", 99)
+	label(quick, "Sets the values to 0 in the boxes above. Press 💾 Save Changes to apply — the player is also removed from those leaderboards.", 12, Enum.Font.Gotham, C.dim)
+	local qr = row(quick, 36, 2)
+	local function quickBtn(text, color, stats, msg)
+		local b = button(qr, text, color, UDim2.fromOffset(230, 34))
+		b.MouseButton1Click:Connect(function()
+			if not target then notify("Pick a player first", false) return end
+			for _, s in ipairs(stats) do stage("stats", s, 0) end
+			refreshPages()
+			notify(msg, true)
+		end)
+	end
+	quickBtn("⏱  Reset all best times", C.red, { "TowerBestTime", "SkyBestEasy", "SkyBestHard" },
+		"Best times set to 0 (Sky Tower, PATAAS Easy & Hard) — press Save Changes")
+	quickBtn("⏳  Reset total play time", C.red, { "PlayTimeMin" },
+		"Total play time set to 0 — press Save Changes")
 end
 
 ---------------------------------------------------------------- render the selected player

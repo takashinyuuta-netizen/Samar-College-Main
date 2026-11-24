@@ -8,17 +8,42 @@ local RS = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local TeleportService = game:GetService("TeleportService")
 local RunService = game:GetService("RunService")
+local TextService = game:GetService("TextService")
 local PlayerData = require(script.Parent:WaitForChild("PlayerData"))
 local PlayerRecords = require(script.Parent:WaitForChild("PlayerRecords"))
 local PlayerReports = require(script.Parent:WaitForChild("PlayerReports"))
 local LevelConfig = require(RS:WaitForChild("LevelConfig"))
 local ShopItems = require(RS:WaitForChild("ShopItems"))
 
-local OWNER_IDS = { [2697306367] = true } -- Aka_Yuuki (Umi)
+local OWNER_IDS = { [2697306367] = true } -- game owner (Roblox user ID)
 if game.CreatorType == Enum.CreatorType.User and game.CreatorId > 0 then OWNER_IDS[game.CreatorId] = true end
 local TOPIC = "SC_AdminActions"
 local MAX_LEVEL = #LevelConfig.Levels
-local EDITABLE_STATS = { "EventsCommon", "EventsRare", "QuizzesPassed", "EventsParkour", "EventsEscape", "EventsPhotobooth" }
+-- every stat the admin panel can edit, grouped into cards on the "Events & Stats" page
+-- (PlayTimeMin is not an attribute: it edits the saved total play time, in minutes)
+local STAT_GROUPS = {
+	{ title = "🎪  Events joined", note = "'Events joined' on the Profile becomes the total of the five event types.", stats = {
+		{ "EventsCommon", "Common events joined", "🎪" }, { "EventsRare", "Rare events joined", "💎" },
+		{ "EventsParkour", "Parkour events joined", "🏃" }, { "EventsEscape", "Escape events joined", "🚪" },
+		{ "EventsPhotobooth", "Photobooth events joined", "📸" }, { "QuizzesPassed", "Level-up quizzes passed", "📝" } } },
+	{ title = "🥇  1st-place wins (leaderboards)", note = "Total wins on the leaderboard becomes the sum of these.", stats = {
+		{ "Win_CampusCheckIn", "Campus Check-In wins", "📍" }, { "Win_QuizBee", "Quiz Bee wins", "🐝" },
+		{ "Win_Booth", "School Fair Booth wins", "🎡" }, { "Win_GuessTheDrawing", "Guess the Drawing wins", "🎨" },
+		{ "Win_TowerGame", "Samar Sky Tower wins", "🗼" }, { "Win_EscapeSchool", "Escape Samar College wins", "🚪" },
+		{ "Win_Intramurals", "Intramurals wins", "🏅" }, { "Win_FoundationDay", "Foundation Day wins", "🎉" } } },
+	{ title = "🗼  Samar Sky Tower (event)", note = "Best time is in seconds (0 = no time yet).", stats = {
+		{ "TowerWins", "Tower wins", "🏆" }, { "TowerRuns", "Climbs started", "🧗" }, { "TowerBestTime", "Best time (seconds)", "⏱" } } },
+	{ title = "☁  PATAAS! Parkour", note = "Best times are in seconds (0 = no time yet).", stats = {
+		{ "SkyWins", "Parkour finishes", "🏆" }, { "SkyRuns", "Parkour runs started", "🧗" },
+		{ "SkyBestEasy", "Best time Easy (seconds)", "⏱" }, { "SkyBestHard", "Best time Hard (seconds)", "⏱" } } },
+	{ title = "⭐  Progress", note = "Play time is the total time in the game (minutes). It does not change the quiz timer.", stats = {
+		{ "XP", "XP", "⭐" }, { "PlayTimeMin", "Total play time (minutes)", "⏳" } } },
+}
+local EDITABLE_STATS = {}
+for _, g in ipairs(STAT_GROUPS) do for _, st in ipairs(g.stats) do table.insert(EDITABLE_STATS, st[1]) end end
+-- best times (seconds, with decimals) and which leaderboard each stat feeds (LeaderboardServer keys)
+local BEST_TIME = { TowerBestTime = "Tower", SkyBestEasy = "PataasEasy", SkyBestHard = "PataasHard" }
+local WIN_STATS = { "Win_CampusCheckIn", "Win_QuizBee", "Win_Booth", "Win_GuessTheDrawing", "Win_TowerGame", "Win_EscapeSchool", "Win_Intramurals", "Win_FoundationDay" }
 local EVENT_STATS = { "EventsCommon", "EventsRare", "EventsParkour", "EventsEscape", "EventsPhotobooth" }
 
 ---------------------------------------------------------------- remotes & signals
@@ -179,10 +204,17 @@ local function applyLive(p, c)
 		end
 	end
 	if c.stats then
-		for stat, n in pairs(c.stats) do p:SetAttribute(stat, math.max(0, math.floor(n))) end
+		for stat, n in pairs(c.stats) do
+			if stat == "PlayTimeMin" then PlayerData.setTime(p, math.max(0, math.floor(n)) * 60)
+			elseif BEST_TIME[stat] then p:SetAttribute(stat, math.max(0, math.floor(n * 100 + 0.5) / 100)) -- keep 2 decimals
+			else p:SetAttribute(stat, math.max(0, math.floor(n))) end
+		end
 		local total = 0
 		for _, s in ipairs(EVENT_STATS) do total += p:GetAttribute(s) or 0 end
 		p:SetAttribute("EventsJoined", total)
+		local wins = 0
+		for _, s in ipairs(WIN_STATS) do wins += p:GetAttribute(s) or 0 end
+		p:SetAttribute("EventWins", wins)
 	end
 	refreshGear:Fire(p)
 end
@@ -214,10 +246,17 @@ local function applyToSave(d, c)
 		end
 	end
 	if c.stats then
-		for stat, n in pairs(c.stats) do d[stat] = math.max(0, math.floor(n)) end
+		for stat, n in pairs(c.stats) do
+			if stat == "PlayTimeMin" then d.Time = math.max(0, math.floor(n)) * 60
+			elseif BEST_TIME[stat] then d[stat] = math.max(0, math.floor(n * 100 + 0.5) / 100)
+			else d[stat] = math.max(0, math.floor(n)) end
+		end
 		local total = 0
 		for _, s in ipairs(EVENT_STATS) do total += tonumber(d[s]) or 0 end
 		d.EventsJoined = total
+		local wins = 0
+		for _, s in ipairs(WIN_STATS) do wins += tonumber(d[s]) or 0 end
+		d.EventWins = wins
 	end
 	return d
 end
@@ -249,18 +288,50 @@ local function sanitize(c)
 	return out
 end
 
+-- after an admin edit: put the new values on the global leaderboards too (a slower best time, a reset to 0...)
+local function syncBoards(userId, c)
+	local setFn = game:GetService("ServerScriptService"):FindFirstChild("LeaderboardSet")
+	if not setFn or not (c.stats or c.reset) then return end
+	local p = findPlayer(userId)
+	local save = (not p) and select(2, pcall(PlayerData.readOffline, userId)) or nil
+	local function val(stat)
+		if p then
+			if stat == "PlayTimeMin" then return PlayerData.getTime(p) end
+			return tonumber(p:GetAttribute(stat)) or 0
+		end
+		if type(save) ~= "table" then return nil end
+		if stat == "PlayTimeMin" then return tonumber(save.Time) or 0 end
+		return tonumber(save[stat]) or 0
+	end
+	local jobs = {}
+	local function want(stat) return c.reset or (c.stats and c.stats[stat] ~= nil) end
+	for stat, key in pairs(BEST_TIME) do
+		if want(stat) then local v = val(stat) if v then table.insert(jobs, { key, (v > 0) and math.floor(v * 1000 + 0.5) or nil }) end end
+	end
+	if want("TowerWins") then local v = val("TowerWins") if v then table.insert(jobs, { "TowerWins", v }) end end
+	if want("PlayTimeMin") then local v = val("PlayTimeMin") if v then table.insert(jobs, { "StayTime", v }) end end
+	local winsChanged = c.reset
+	for _, s in ipairs(WIN_STATS) do
+		if want(s) then winsChanged = true local v = val(s) if v then table.insert(jobs, { s, v }) end end
+	end
+	if winsChanged then local v = val("EventWins") if v then table.insert(jobs, { "EventWins", v }) end end
+	for _, j in ipairs(jobs) do pcall(function() setFn:Invoke(j[1], userId, j[2]) end) end
+end
+
 local function commit(userId, c)
 	local p = findPlayer(userId)
 	if p then
 		applyLive(p, c)
 		task.spawn(PlayerData.save, p)
-		return true, "Saved — applied live to " .. p.Name
+		task.spawn(syncBoards, userId, c)
+		return true, "Saved — applied live to " .. p.Name .. " (leaderboards updated)"
 	end
 	-- not in this server: tell other servers (if they have the player) and edit the save
 	publish({ a = "apply", u = userId, c = c })
 	local ok, err = PlayerData.updateOffline(userId, function(d) return applyToSave(d, c) end)
 	if not ok then return false, "Could not save: " .. tostring(err) end
-	return true, "Saved to the player's data (offline / other server)"
+	task.spawn(syncBoards, userId, c)
+	return true, "Saved to the player's data (offline / other server) — leaderboards updated"
 end
 
 ---------------------------------------------------------------- bans & kicks
@@ -290,9 +361,43 @@ pcall(function()
 		elseif m.a == "admins" then
 			loadAdmins()
 			for _, pl in ipairs(Players:GetPlayers()) do givePanel(pl) end
+		elseif m.a == "announce" and type(m.t) == "string" and m.j ~= game.JobId then
+			-- 📢 an admin announced to ALL servers (the sending server already showed it)
+			local ev = RS:FindFirstChild("AdminRemotes") and RS.AdminRemotes:FindFirstChild("AdminAnnounce")
+			if ev then ev:FireAllClients({ text = m.t, from = m.n, global = true }) end
 		end
 	end)
 end)
+
+---------------------------------------------------------------- 📢 announcements (big text in the middle of everyone's screen)
+local announceEvent = remotes:FindFirstChild("AdminAnnounce") or Instance.new("RemoteEvent")
+announceEvent.Name = "AdminAnnounce" announceEvent.Parent = remotes
+local ANNOUNCE_MAX = 150
+local lastAnnounce = {}
+local function announceHandler(caller, args)
+	local text = type(args.text) == "string" and args.text or ""
+	text = (text:gsub("%c", " "))
+	text = (text:gsub("%s+", " "))
+	text = text:match("^%s*(.-)%s*$") or ""
+	if text == "" then return { ok = false, msg = "Type a message first" } end
+	if (utf8.len(text) or #text) > ANNOUNCE_MAX then return { ok = false, msg = "Keep it under " .. ANNOUNCE_MAX .. " characters" } end
+	local now = os.clock()
+	if lastAnnounce[caller] and now - lastAnnounce[caller] < 5 then return { ok = false, msg = "Wait a few seconds between announcements" } end
+	local ok, filtered = pcall(function()
+		return TextService:FilterStringAsync(text, caller.UserId):GetNonChatStringForBroadcastAsync()
+	end)
+	if not ok or type(filtered) ~= "string" or filtered == "" then return { ok = false, msg = "Couldn't check the message — try again" } end
+	lastAnnounce[caller] = now
+	local global = args.scope == "global"
+	announceEvent:FireAllClients({ text = filtered, from = caller.DisplayName, global = global })
+	if global then
+		local sent = pcall(function() MessagingService:PublishAsync(TOPIC, { a = "announce", t = filtered, n = caller.DisplayName, j = game.JobId }) end)
+		if not sent then return { ok = true, msg = "📢 Shown in this server (other servers couldn't be reached)" } end
+		return { ok = true, msg = "🌍 Announced to every server" }
+	end
+	return { ok = true, msg = "📢 Announced to this server" }
+end
+Players.PlayerRemoving:Connect(function(p) lastAnnounce[p] = nil end)
 
 ---------------------------------------------------------------- request handler
 local lastCall = {}
@@ -303,12 +408,20 @@ local function protectTarget(caller, targetId)
 end
 
 local handlers = {}
+handlers.announce = announceHandler -- 📢 (defined above)
+-- 🧹 clear a bad Guess the Drawing board (the drawer can't draw again in this server)
+handlers.clearDrawing = function(caller)
+	local ok, GTD = pcall(function() return require(script.Parent.Events.EventModules.GuessTheDrawing) end)
+	if not ok or not GTD.AdminClear then return { ok = false, msg = "Guess the Drawing isn't available" } end
+	local done, msg = GTD.AdminClear(caller)
+	return { ok = done == true, msg = msg }
+end
 
 handlers.init = function(caller)
 	local list = {}
 	for _, p in ipairs(Players:GetPlayers()) do table.insert(list, { userId = p.UserId, name = p.Name, displayName = p.DisplayName }) end
 	return { ok = true, role = roleOf(caller.UserId), items = itemList(), levels = (function() local t = {} for i, l in ipairs(LevelConfig.Levels) do t[i] = l.Name end return t end)(),
-		stats = EDITABLE_STATS, players = list, studio = game:GetService("RunService"):IsStudio() }
+		stats = EDITABLE_STATS, statGroups = STAT_GROUPS, players = list, studio = game:GetService("RunService"):IsStudio() }
 end
 
 handlers.players = function()
@@ -332,6 +445,7 @@ handlers.lookup = function(caller, args)
 	end
 	local ownedSet = {} for _, id in ipairs(data.Owned or {}) do ownedSet[id] = true end
 	local stats = {} for _, s in ipairs(EDITABLE_STATS) do stats[s] = tonumber(data[s]) or 0 end
+	stats.PlayTimeMin = math.floor((tonumber(data.Time) or 0) / 60)
 	local b = getBan(userId)
 	local okS, seen = pcall(PlayerRecords.brief, userId)
 	local okR, reports = pcall(PlayerReports.countFor, userId)
@@ -535,6 +649,23 @@ handlers.power = function(caller, args)
 		end
 		applySpeed(p)
 		return { ok = true, msg = on and ("Speed set to " .. p:GetAttribute("AdminSpeed") .. " for " .. p.Name) or ("Speed back to normal for " .. p.Name) }
+	elseif kind == "bring" then
+		if p == caller then return { ok = false, msg = "That's you" } end
+		local me = caller.Character and caller.Character:FindFirstChild("HumanoidRootPart")
+		local them = p.Character
+		if not me or not them then return { ok = false, msg = "No character to move" } end
+		local hum = them:FindFirstChildOfClass("Humanoid") if hum then hum.Sit = false end
+		local spot = me.CFrame * CFrame.new(0, 0, -4)
+		them:PivotTo(CFrame.lookAt(spot.Position, Vector3.new(me.Position.X, spot.Position.Y, me.Position.Z)))
+		return { ok = true, msg = "Brought " .. p.Name .. " to you" }
+	elseif kind == "respawn" then
+		p:LoadCharacter()
+		return { ok = true, msg = "Respawned " .. p.Name .. " at the spawn point" }
+	elseif kind == "heal" then
+		local hum = p.Character and p.Character:FindFirstChildOfClass("Humanoid")
+		if not hum then return { ok = false, msg = "No character" } end
+		hum.Health = hum.MaxHealth
+		return { ok = true, msg = "Healed " .. p.Name }
 	end
 	return { ok = false, msg = "Unknown power" }
 end
@@ -605,8 +736,9 @@ handlers.rec_goto = function(caller, args)
 	local me = caller.Character
 	local hum = me and me:FindFirstChildOfClass("Humanoid")
 	if not them or not me or not hum then return { ok = false, msg = "No character to move" } end
-	hum.Sit = false
 	local spot = them.CFrame * CFrame.new(0, 0, 4)
+	pcall(function() caller:RequestStreamAroundAsync(spot.Position, 4) end) -- no loading freeze on arrival
+	hum.Sit = false
 	me:PivotTo(CFrame.lookAt(spot.Position, Vector3.new(them.Position.X, spot.Position.Y, them.Position.Z)))
 	return { ok = true, msg = "Teleported next to " .. p.Name }
 end

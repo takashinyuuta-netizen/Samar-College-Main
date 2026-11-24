@@ -7,7 +7,10 @@
 -- Live data in MemoryStore (shared by all servers, removed by itself):
 --   SC_Online_v1    <UserId> -> server, place, area on campus, time in  (gone 2 min after the server stops updating it)
 --   SC_Servers_v1   <JobId>  -> server code, player count, start time
---   SC_Sessions_v1  everyone's recent time in / time out (kept 3 days)
+--   SC_Sessions_v1  everyone's recent time in / time out (kept 12 hours, newest FEED_MAX only)
+--   MemoryStore space is small (it grows with the number of players). The feed used to keep every join for 3 days,
+--   filled the whole quota and made every write fail ("TotalMemoryOverLimit"). Now entries live 12 hours and each
+--   server trims anything older than the newest FEED_MAX entries when it starts and every 20 minutes.
 -- In Studio without "Enable Studio Access to API Services" it all still works, but only for the
 -- current test session (nothing is saved).
 local Players = game:GetService("Players")
@@ -24,7 +27,7 @@ local PlayerRecords = {}
 local MAX_LOG = 40              -- sessions kept per player
 local HEARTBEAT = 30            -- seconds between live updates
 local PRESENCE_TTL = 120        -- live entries disappear this long after a server stops updating them
-local FEED_TTL = 3 * 86400      -- recent time in / out list keeps 3 days
+local FEED_TTL = 12 * 3600      -- recent time in / out list keeps 12 hours (was 3 days: it filled the MemoryStore quota)
 local FEED_MAX = 100
 local PAGE_SIZE = 20
 
@@ -334,6 +337,40 @@ local function heartbeat()
 		end
 	end
 end
+
+-- keep the feed small: only the newest FEED_MAX entries stay (removing never needs extra memory, so this
+-- works even when the store is over its limit). Slow on purpose to stay far below the request limits.
+local trimming = false
+function PlayerRecords.trimFeed(maxRemove)
+	if fakeMS or trimming then return 0 end
+	trimming = true
+	local removed = 0
+	local ok, err = pcall(function()
+		local newest = stores.feed:GetRangeAsync(Enum.SortDirection.Descending, FEED_MAX)
+		if #newest < FEED_MAX then return end
+		local keepFrom = newest[#newest].key -- the oldest entry we keep
+		while removed < (maxRemove or 300) do
+			local old = stores.feed:GetRangeAsync(Enum.SortDirection.Ascending, 100, nil, keepFrom)
+			if #old == 0 then break end
+			for _, it in ipairs(old) do
+				pcall(function() stores.feed:RemoveAsync(it.key) end)
+				removed += 1
+				task.wait(0.25)
+				if removed >= (maxRemove or 300) then break end
+			end
+		end
+	end)
+	trimming = false
+	if not ok then warn("[PlayerRecords] feed trim: " .. tostring(err)) end
+	return removed
+end
+task.spawn(function()
+	task.wait(math.random(20, 90)) -- servers don't all trim at the same moment
+	while true do
+		PlayerRecords.trimFeed(300)
+		task.wait(20 * 60)
+	end
+end)
 
 Players.PlayerAdded:Connect(onJoin)
 Players.PlayerRemoving:Connect(onLeave)

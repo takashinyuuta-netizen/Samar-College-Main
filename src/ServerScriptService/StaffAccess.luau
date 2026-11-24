@@ -8,7 +8,7 @@
 local StaffAccess = {}
 
 local STAFF_ROLES = { Teacher = true, Staff = true, Employee = true, Faculty = true, Guard = true }
-local OWNER_IDS = { [2697306367] = true } -- Aka_Yuuki (Umi), keep in sync with AdminServer
+local OWNER_IDS = { [2697306367] = true } -- game owner (Roblox user ID), keep in sync with AdminServer
 if game.CreatorType == Enum.CreatorType.User and game.CreatorId > 0 then OWNER_IDS[game.CreatorId] = true end
 
 function StaffAccess.isStaff(player)

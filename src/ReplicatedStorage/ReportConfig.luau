@@ -6,6 +6,7 @@ return {
 		{ Id = "Cheating", Name = "Cheating / exploiting" },
 		{ Id = "Scam", Name = "Scamming or stealing" },
 		{ Id = "Inappropriate", Name = "Inappropriate avatar or behavior" },
+		{ Id = "Drawing", Name = "Inappropriate drawing (Guess the Drawing)" },
 		{ Id = "PersonalInfo", Name = "Asking for or sharing personal info" },
 		{ Id = "Dating", Name = "Dating / romance roleplay" },
 		{ Id = "Spam", Name = "Spamming or trolling" },
