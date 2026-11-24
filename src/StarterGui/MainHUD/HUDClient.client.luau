@@ -218,7 +218,6 @@ end)
 local config = require(ReplicatedStorage:WaitForChild("HUDConfig"))
 local hudRemotes = ReplicatedStorage:WaitForChild("HUDRemotes")
 local mapTeleport = hudRemotes:WaitForChild("MapTeleport")
-local switchServer = hudRemotes:WaitForChild("SwitchServer")
 local RunServiceMap = game:GetService("RunService")
 local UISMap = game:GetService("UserInputService")
 local PlayersMap = game:GetService("Players")
@@ -329,6 +328,8 @@ local function selectPin(place, u, v)
 		return
 	end
 	selected, selectedAt = place.Id, os.clock()
+	-- start loading that place in the background now, so "tap again" teleports with no loading freeze
+	mapTeleport:FireServer(place.Id, "preload")
 	pinLabel.Text = (place.Icon or "") .. " " .. place.Name .. " — tap again to go"
 	pinLabel.Visible = true
 	focusOn(u, v)
@@ -732,49 +733,6 @@ end)
 
 ------------------------------------------------------------ SETTINGS
 local setPage = PAGES.Settings.frame
-local elemCard = setPage.ServerChoice:WaitForChild("ElementaryCard")
-local jhCard = setPage.ServerChoice:WaitForChild("JuniorHighCard")
-local serverNote = setPage:WaitForChild("ServerNote")
-
--- this place is the Junior High+ (main campus) server
-jhCard.BackgroundColor3 = Color3.fromRGB(18, 70, 52)
-jhCard.UIStroke.Color = ACCENT
-jhCard.UIStroke.Thickness = 2.5
-
-local function askConfirm(message, detail, onYes)
-	confirm.Card.Message.Text = message
-	confirm.Card.Detail.Text = detail
-	confirm.Visible = true
-	local yesConn, noConn
-	yesConn = confirm.Card.Yes.MouseButton1Click:Connect(function()
-		yesConn:Disconnect() noConn:Disconnect()
-		confirm.Visible = false
-		onYes()
-	end)
-	noConn = confirm.Card.Cancel.MouseButton1Click:Connect(function()
-		yesConn:Disconnect() noConn:Disconnect()
-		confirm.Visible = false
-	end)
-end
-
-elemCard.MouseButton1Click:Connect(function()
-	if (tonumber(config.ElementaryPlaceId) or 0) <= 0 then
-		showToast("The Elementary server isn't set up yet")
-		return
-	end
-	askConfirm("Switch to the Elementary server?",
-		"You'll leave this server and join the separate, kid-friendly Elementary server.",
-		function() switchServer:FireServer("Elementary") end)
-end)
-jhCard.MouseButton1Click:Connect(function()
-	showToast("You're already on the Junior High+ server")
-end)
-switchServer.OnClientEvent:Connect(showToast)
--- no server switch: hide the whole "Server" section in Settings
-for _, n in ipairs({ "Server", "ServerChoice", "ServerNote" }) do
-	local o = setPage:FindFirstChild(n)
-	if o then o.Visible = false end
-end
 
 -- sound groups: music vs sound effects (assigned locally, so each player has their own volume)
 local musicGroup = SoundService:WaitForChild("Music")
@@ -885,15 +843,32 @@ local function makeToggle(frame, attr, initial)
 		TweenService:Create(switch.Knob, TweenInfo.new(0.12), {Position = on and UDim2.new(1, -23, 0.5, 0) or UDim2.new(0, 3, 0.5, 0)}):Play()
 		player:SetAttribute(attr, on)
 	end
-	switch.MouseButton1Click:Connect(function() on = not on render() sendSetting(attr, on) end)
+	switch.MouseButton1Click:Connect(function()
+		on = not on
+		player:SetAttribute("SC_UserSet_" .. attr, true) -- the player's own choice: auto-detection never overrides it
+		render() sendSetting(attr, on)
+	end)
+	-- other scripts (AutoPerformance) may change the setting: keep the switch in sync
+	player:GetAttributeChangedSignal(attr):Connect(function()
+		local v = player:GetAttribute(attr)
+		if type(v) == "boolean" and v ~= on then on = v render() end
+	end)
 	render()
 end
 makeToggle(setPage:WaitForChild("EventAlerts"), "Setting_EventAlerts", true)
 makeToggle(setPage:WaitForChild("LeaderboardUpdates"), "Setting_LeaderboardUpdates", true)
 
 -- performance (handled by StarterPlayerScripts.PerformanceSettings)
-makeToggle(setPage:WaitForChild("Shadows"), "Setting_Shadows", true) -- 🌗 shadows on/off (default on)
+-- LOW-END DEVICES (phones, tablets, consoles) start in low mode: shadows off, Improve FPS on,
+-- effects off. PCs start with everything on; AutoPerformance turns low mode on if the FPS is low.
+local LOW_DEVICE = (game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled)
+	or game:GetService("GuiService"):IsTenFootInterface()
+makeToggle(setPage:WaitForChild("Shadows"), "Setting_Shadows", not LOW_DEVICE) -- 🌗 shadows on/off (default on)
 -- phones / tablets start with Improve FPS ON (they can turn it off); PCs start with it off
 local UIS = game:GetService("UserInputService")
-makeToggle(setPage:WaitForChild("ImproveFPS"), "Setting_ImproveFPS", UIS.TouchEnabled and not UIS.KeyboardEnabled)
-makeToggle(setPage:WaitForChild("DisableEffects"), "Setting_DisableEffects", false)
+makeToggle(setPage:WaitForChild("ImproveFPS"), "Setting_ImproveFPS", LOW_DEVICE)
+makeToggle(setPage:WaitForChild("DisableEffects"), "Setting_DisableEffects", LOW_DEVICE)
+-- 📊 small FPS counter at the top of the screen (StarterPlayerScripts.FPSDisplay)
+makeToggle(setPage:WaitForChild("ShowFPS"), "Setting_ShowFPS", true)
+-- 🌿 grass blades on/off (StarterPlayerScripts.GrassToggle); phones / tablets / consoles start with it off
+makeToggle(setPage:WaitForChild("Grass"), "Setting_Grass", not LOW_DEVICE)

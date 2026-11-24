@@ -3,7 +3,7 @@
 
 return {
 	-- Place ID of the separate Elementary (kids) server. 0 = not set up yet.
-	ElementaryPlaceId = 0,
+	ElementaryPlaceId = 0, -- no teleport to the Kid Server game (0 = off)
 
 	-- World area that your map image covers (top-down, image top = MinZ, left = MinX).
 	-- Pins are placed on the image using these bounds.
@@ -25,13 +25,13 @@ return {
 	-- Optional LookAt = a point the player faces after teleporting.
 	-- Optional MapX / MapY (0-1) override the pin position on the image.
 	Places = {
-		{ Id = "MainGate",      Name = "Main Gate",            Icon = "🚪", Position = Vector3.new(252, 20, -26) },
+		{ Id = "MainGate",      Name = "Main Gate",            Icon = "🚪", Position = Vector3.new(5, 4, 8), LookAt = Vector3.new(19.5, 4, 8) }, -- outside the front gate, facing it
 		{ Id = "Courtyard",     Name = "Courtyard",            Icon = "🏀", Position = Vector3.new(125, 3.5, 15) },
 		{ Id = "Canteen",       Name = "Canteen (Cashier)",    Icon = "🍽️", Position = Vector3.new(114, 4.6, 158.5), LookAt = Vector3.new(98, 4.6, 170) }, -- open floor inside the east door, facing the cashier
 		{ Id = "BadmintonHall", Intramurals = true, Name = "🏸 Badminton (1F Hall)", Icon = "🏸", Position = Vector3.new(221.5, 4.5, 196) },
 		{ Id = "TableTennisIsland", Intramurals = true, Name = "🏓 Table Tennis Island", Icon = "🏓", Position = Vector3.new(-470, 74, -138) },
 		{ Id = "PickleballIsland", Intramurals = true, Name = "🥒 Pickleball Island", Icon = "🥒", Position = Vector3.new(-470, 74, 16) },
-		{ Id = "VolleyballCampus", Intramurals = true, Name = "🏐 Volleyball Court", Icon = "🏐", Position = Vector3.new(375, 4.5, 6) },
+		{ Id = "VolleyballCampus", Intramurals = true, Name = "🏐 Volleyball Sky Island", Icon = "🏐", Position = Vector3.new(-470, 114.5, -314) }, -- moved from the campus street (375, 4.5, 6) to its own sky island (Nov 17)
 		{ Id = "Basketball3v3Island", Intramurals = true, Name = "🏀 3v3 Basketball Island", Icon = "🏀", Position = Vector3.new(-470, 74.35, 186.5) },
 		{ Id = "Basketball5v5Island", Intramurals = true, Name = "🏀 5v5 Basketball Arena", Icon = "🏀", Position = Vector3.new(-470, 74.35, 359) },
 		{ Id = "ChessLibrary1", Intramurals = true, Name = "♟️ Chess (2F Library)", Icon = "♟️", Position = Vector3.new(144.5, 19.6, -175) },

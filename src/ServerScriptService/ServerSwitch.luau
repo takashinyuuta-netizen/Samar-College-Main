@@ -14,7 +14,7 @@ local RS = game:GetService("ReplicatedStorage")
 local HUDConfig = require(RS:WaitForChild("HUDConfig"))
 
 local M = {}
-M.KID_SERVER_OPEN = false -- 🧸 the Kid Server is "Coming soon". Set to true when it's ready.
+M.KID_SERVER_OPEN = false -- 🧸 no teleport to the Kid Server game (it is its own experience; players join it from Roblox)
 local cooldown = {}
 
 local function elementaryPlace() return tonumber(HUDConfig.ElementaryPlaceId) or 0 end

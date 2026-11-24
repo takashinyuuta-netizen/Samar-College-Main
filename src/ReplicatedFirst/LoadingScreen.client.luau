@@ -85,25 +85,7 @@ local bg = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE
 local grad = new("UIGradient", { Rotation = 35, Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.fromRGB(10, 60, 38)), ColorSequenceKeypoint.new(0.55, DEEP), ColorSequenceKeypoint.new(1, NAVY) }) }, bg)
 task.spawn(function() while bg.Parent do grad.Rotation = (grad.Rotation + 0.05) % 360 RunService.RenderStepped:Wait() end end)
 
--- floating "blocks" (little cubes drifting up)
-local blocks = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ClipsDescendants = true }, root)
-local blockColors = { GOLD, GREEN, WHITE, Color3.fromRGB(80, 170, 255) }
-for i = 1, 26 do
-	task.spawn(function()
-		local r = Random.new(i * 77)
-		while blocks.Parent do
-			local s = r:NextInteger(10, 44)
-			local b = new("Frame", { Size = UDim2.fromOffset(s, s), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(r:NextNumber(0, 1), 0, 1.1, 0),
-				BackgroundColor3 = blockColors[r:NextInteger(1, #blockColors)], BackgroundTransparency = r:NextNumber(0.72, 0.9), Rotation = r:NextInteger(0, 90), BorderSizePixel = 0 }, blocks)
-			corner(b, UDim.new(0, math.floor(s / 5)))
-			local t = r:NextNumber(9, 18)
-			tw(b, t, { Position = UDim2.new(b.Position.X.Scale + r:NextNumber(-0.08, 0.08), 0, -0.1, 0), Rotation = b.Rotation + r:NextInteger(-180, 180) }, Enum.EasingStyle.Linear)
-			task.wait(t)
-			b:Destroy()
-		end
-	end)
-	task.wait()
-end
+-- (the floating squares background was removed: plain gradient only)
 
 -- everything else scales with the screen (designed for 1000 x 600, works on phones too)
 local stage = new("Frame", { Size = UDim2.fromOffset(1000, 600), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundTransparency = 1 }, root)
@@ -445,6 +427,7 @@ local function finish(msg)
 end
 
 -- no server choice: after "tap to continue" go straight in
+-- (the Kid Server is its own Roblox game; teleporting players between games is not used)
 do
 	finish("You're good to go!")
 	return
@@ -459,7 +442,7 @@ local msgLabel = text(selectView, { Text = "", Font = BOLD, TextColor3 = GOLD, S
 
 local SERVERS = {
 	{ id = "Main", icon = "🏫", name = "MAIN SERVER", color = Color3.fromRGB(30, 140, 80), tags = { "JHS", "SHS", "College" }, desc = "The full campus with all events:\nTower, Escape, Intramurals & more." },
-	{ id = "Kid", icon = "🧸", name = "KID SERVER", color = Color3.fromRGB(240, 140, 40), tags = { "Elementary", "Kid-friendly" }, desc = "A calmer campus for younger students\nwith kid-friendly events.", soon = true },
+	{ id = "Kid", icon = "🧸", name = "KID SERVER", color = Color3.fromRGB(240, 140, 40), tags = { "Elementary", "Kid-friendly" }, desc = "A calmer campus for younger students\nwith kid-friendly events." },
 }
 local busy = false
 local cards = {}
