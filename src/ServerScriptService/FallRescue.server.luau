@@ -20,14 +20,25 @@ task.spawn(function()
 	toast = rem and rem:FindFirstChild("EventToast")
 end)
 
+local rescuing = {}
 while true do
 	task.wait(0.5)
 	for _, p in ipairs(Players:GetPlayers()) do
 		local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
-		if root and root.Position.Y < RESCUE_BELOW and not p:GetAttribute("InSkyClimb") then
-			root.AssemblyLinearVelocity = Vector3.zero
-			p.Character:PivotTo(CFrame.new(spawnPoint()))
-			if toast then toast:FireClient(p, "☁️ Whoa! You fell off the floating island — welcome back!") end
+		if root and not rescuing[p] and root.Position.Y < RESCUE_BELOW and not p:GetAttribute("InSkyClimb") then
+			rescuing[p] = true
+			task.spawn(function()
+				local spot = spawnPoint()
+				pcall(function() p:RequestStreamAroundAsync(spot, 3) end) -- spawn area loaded before landing there
+				local r = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+				if r then
+					r.AssemblyLinearVelocity = Vector3.zero
+					p.Character:PivotTo(CFrame.new(spot))
+					if toast then toast:FireClient(p, "☁️ Whoa! You fell off the floating island — welcome back!") end
+				end
+				task.wait(1)
+				rescuing[p] = nil
+			end)
 		end
 	end
 	local npcs = workspace:FindFirstChild("SamarCollege_Campus") and workspace.SamarCollege_Campus:FindFirstChild("CampusNPCs")

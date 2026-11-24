@@ -35,13 +35,19 @@ for _, item in ipairs(shopItems.Equipment) do
 end
 
 -- one place that sets walk speed: base + equipment + held gear (Speed Coil) + drink boosts (Energy Drink / Bloxiade)
+-- 🏃 SPRINT / RUN button (SprintServer sets player attribute "Sprinting")
+local SPRINT_BONUS = 10
+local function normalSpeed(player, sprinting)
+	return BASE_WALKSPEED + (player:GetAttribute("EquipSpeed") or 0) + (player:GetAttribute("GearSpeed") or 0) + (player:GetAttribute("BoostSpeed") or 0)
+		+ (sprinting and SPRINT_BONUS or 0)
+end
 local function applySpeed(player)
 	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	if not humanoid then return end
 	if player:GetAttribute("SC_Frozen") then return end -- a sports game is holding this player in place
 	local admin = player:GetAttribute("AdminSpeed")
 	if admin then humanoid.WalkSpeed = admin return end
-	humanoid.WalkSpeed = BASE_WALKSPEED + (player:GetAttribute("EquipSpeed") or 0) + (player:GetAttribute("GearSpeed") or 0) + (player:GetAttribute("BoostSpeed") or 0)
+	humanoid.WalkSpeed = normalSpeed(player, player:GetAttribute("Sprinting") == true)
 end
 local boostToken = {}
 local function speedBoost(player, amount, seconds)
@@ -335,6 +341,14 @@ end
 
 local function onPlayerAdded(player)
 	player:GetAttributeChangedSignal("GearSpeed"):Connect(function() applySpeed(player) end)
+	-- sprint on/off: only change the speed if nothing else (an event, detention, a sports game, the
+	-- PATAAS climb, admin speed) is controlling it right now, i.e. the player is at their normal speed
+	player:GetAttributeChangedSignal("Sprinting"):Connect(function()
+		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+		if not hum or player:GetAttribute("SC_Frozen") or player:GetAttribute("AdminSpeed") then return end
+		local nowSprinting = player:GetAttribute("Sprinting") == true
+		if math.abs(hum.WalkSpeed - normalSpeed(player, not nowSprinting)) < 0.01 then applySpeed(player) end
+	end)
 	player:GetAttributeChangedSignal("AdminSpeed"):Connect(function() applySpeed(player) end)
 	player:GetAttributeChangedSignal("EquipLocked"):Connect(function() refreshEquipment(player) end)
 	local data = PlayerData.load(player)
@@ -563,7 +577,14 @@ local function applyLook(player, desc)
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not humanoid then return false end
 	for k, v in pairs(SIZE) do desc[k] = v end
+	-- ApplyDescription rebuilds the hands, which breaks the grip of a held tool (the flashlight etc. would float).
+	-- Put the held tool away first, then hand it back after the new look is on.
+	local held = character:FindFirstChildOfClass("Tool")
+	if held then humanoid:UnequipTools() end
 	local ok, err = pcall(function() humanoid:ApplyDescription(desc) end)
+	if held and held.Parent and humanoid.Parent and humanoid.Health > 0 then
+		pcall(function() humanoid:EquipTool(held) end)
+	end
 	if not ok then warn("[BodySwap] " .. tostring(err)) return false end
 	refreshCosmetic(player) -- shop cosmetics stay on top
 	return true

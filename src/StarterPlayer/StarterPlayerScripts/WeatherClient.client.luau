@@ -380,7 +380,8 @@ RunService.RenderStepped:Connect(function(dt)
 	clock += dt
 	local k = math.clamp(dt * 3 / C.Transition, 0, 1)
 	for key, v in pairs(target) do cur[key] = lerp(cur[key], v, k) end
-	if os.clock() - lastIndoorCheck > 0.25 then lastIndoorCheck = os.clock() checkIndoor() end
+	local lowFps = player:GetAttribute("Setting_ImproveFPS") == true
+	if os.clock() - lastIndoorCheck > (lowFps and 0.6 or 0.25) then lastIndoorCheck = os.clock() checkIndoor() end
 	indoorBlend = lerp(indoorBlend, indoor and 1 or 0, math.clamp(dt * 4, 0, 1))
 	flash = math.max(0, flash - dt * 6)
 	local q = quality()
@@ -389,7 +390,7 @@ RunService.RenderStepped:Connect(function(dt)
 	-- sky & light = time of day x weather (recalculated LIGHT_HZ times a second, every frame only during lightning)
 	updateSkyClock(dt)
 	lightAcc += dt
-	if lightAcc >= 1 / LIGHT_HZ or flash > 0 then
+	if lightAcc >= 1 / (lowFps and 4 or LIGHT_HZ) or flash > 0 then
 	lightAcc = 0
 	local ct = Lighting.ClockTime
 	if not todClock or math.abs(ct - todClock) > 0.0015 then todClock = ct tod = todAt(ct) end

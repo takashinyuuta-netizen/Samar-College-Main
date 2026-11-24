@@ -21,7 +21,7 @@ return {
 		-- Roblox gear (real gear models, our own scripts). Tool = name in ReplicatedStorage.Tools, given while equipped.
 		{Id = "GravityCoil", Name = "Gravity Coil", Desc = "Hold it to jump super high and float down slowly (low gravity).", Icon = "🌀", Price = 250, Currency = "Common", Tool = "GravityCoil"},
 		{Id = "SpeedCoil", Name = "Speed Coil", Desc = "Hold it to run much faster (+12 speed).", Icon = "⚡", Price = 250, Currency = "Common", Tool = "SpeedCoil"},
-		{Id = "MagicCarpet", Name = "Rainbow Magic Carpet", Desc = "Hold it to FLY anywhere on a rainbow carpet! WASD steer, Space up, Shift down. Rare & expensive.", Icon = "🌈", Price = 2500, Currency = "Common", Tool = "MagicCarpet"},
+		{Id = "MagicCarpet", Name = "Rainbow Magic Carpet", Desc = "Hold it to FLY anywhere on a rainbow carpet! WASD steer, Space up, Shift down. Very rare: Event Coins only.", Icon = "🌈", Price = 1000, Currency = "Event", Tool = "MagicCarpet"},
 	},
 	Consumable = {
 		{Id = "PizzaSlice", Name = "Pizza Slice", Desc = "Restores 15 health instantly.", Icon = "🍕", Price = 15, Currency = "Common"},

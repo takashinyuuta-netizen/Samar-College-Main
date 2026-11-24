@@ -187,6 +187,17 @@ player.CharacterAdded:Connect(function() task.wait(0.3) onFolderLost() end)
 local function convert(prompt)
 	if converted[prompt] or not prompt:IsA("ProximityPrompt") then return end
 	if not prompt:IsDescendantOf(workspace) then return end
+	-- KeepE = true (fair booths): BOTH ways work — E / the small button, AND clicking / tapping the object itself
+	if prompt:GetAttribute("KeepE") then
+		makeSmall(prompt)
+		converted[prompt] = true
+		prompt.PromptShown:Connect(function() shown[prompt] = true end)
+		prompt.PromptHidden:Connect(function() shown[prompt] = nil end)
+		prompt.AncestryChanged:Connect(function()
+			if not prompt:IsDescendantOf(workspace) then converted[prompt] = nil shown[prompt] = nil end
+		end)
+		return
+	end
 	if keepsE(prompt) then makeSmall(prompt) return end
 	converted[prompt] = true
 	prompt.Style = Enum.ProximityPromptStyle.Custom

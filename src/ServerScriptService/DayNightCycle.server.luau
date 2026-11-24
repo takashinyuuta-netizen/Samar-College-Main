@@ -21,7 +21,9 @@ Lighting.ClockTime = C.StartHour or 7.25 -- every server starts in the morning (
 -- (Writing it every frame sent it to every player 60x a second, re-ran every ClockTime script
 -- (night lights, nature) 60x a second and made every client redraw its sun shadows each frame.)
 -- At this speed the sun moves less than half a degree per step, so it still looks smooth.
-local WRITE_EVERY = 0.5
+local WRITE_EVERY = 2 -- every 2 s (was 0.5): the sun moves only ~0.25° per step, and every
+-- player's device redraws the sky / lighting 4x less often. Players with the cycle OFF (low-end mode)
+-- also get far fewer server updates fighting their fixed sky.
 local ATTR_EVERY = 1
 local t = Lighting.ClockTime
 local sinceWrite, sinceAttr = 0, 0

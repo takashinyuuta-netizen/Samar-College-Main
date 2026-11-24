@@ -47,7 +47,9 @@ local flyGui = Instance.new("ScreenGui") flyGui.Name = "CarpetGui" flyGui.ResetO
 flyGui.Parent = player:WaitForChild("PlayerGui")
 local hint = Instance.new("TextLabel") hint.AnchorPoint = Vector2.new(0.5, 0) hint.Position = UDim2.new(0.5, 0, 0, 60) hint.Size = UDim2.fromOffset(460, 30) hint.TextScaled = true
 hint.BackgroundColor3 = Color3.fromRGB(40, 20, 70) hint.BackgroundTransparency = 0.2 hint.TextColor3 = Color3.new(1, 1, 1) hint.Font = Enum.Font.GothamBold hint.TextSize = 13
-hint.Text = "🌈 Flying!  WASD steer (where you look) • Space up • Shift down • put the carpet away to land" hint.Parent = flyGui
+hint.Text = "🌈 Flying!  WASD steer (where you look) • Space up • Shift down • put the carpet away to land"
+hint.Visible = false -- the flying hint banner is hidden (removed from the screen); the ⬆️⬇️ phone buttons stay
+hint.Parent = flyGui
 Instance.new("UICorner", hint).CornerRadius = UDim.new(0, 15)
 local function flyButton(text, y)
 	local b = Instance.new("TextButton") b.AnchorPoint = Vector2.new(1, 1) b.Position = UDim2.new(1, -24, 1, y) b.Size = UDim2.fromOffset(64, 64)

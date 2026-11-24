@@ -31,7 +31,10 @@ local function applyDefaultSize(character)
 			end
 		end
 		if changed then
+			local held = character:FindFirstChildOfClass("Tool") -- keep a held tool in the hand (ApplyDescription rebuilds the hands)
+			if held then humanoid:UnequipTools() end
 			local applied, err = pcall(function() humanoid:ApplyDescription(desc) end)
+			if held and held.Parent and humanoid.Health > 0 then pcall(function() humanoid:EquipTool(held) end) end
 			if not applied then
 				warn("[DefaultAvatarSize] Couldn't resize " .. character.Name .. ": " .. tostring(err))
 			end
