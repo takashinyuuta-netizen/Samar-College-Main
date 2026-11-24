@@ -19,13 +19,16 @@ local folder = RS:FindFirstChild("Leaderboards") or Instance.new("Folder")
 folder.Name = "Leaderboards" folder.Parent = RS
 
 local tabs, order = {}, {}
-for _, b in ipairs(Cfg.Boards) do
-	for _, t in ipairs(b.Tabs) do
-		tabs[t.Key] = t table.insert(order, t)
-		local v = folder:FindFirstChild(t.Key) or Instance.new("StringValue")
-		v.Name = t.Key v.Value = '{"rows":[]}' v.Parent = folder
-	end
+local function addTab(t)
+	if tabs[t.Key] then return end
+	tabs[t.Key] = t table.insert(order, t)
+	local v = folder:FindFirstChild(t.Key) or Instance.new("StringValue")
+	v.Name = t.Key v.Value = '{"rows":[]}' v.Parent = folder
 end
+for _, b in ipairs(Cfg.Boards) do
+	for _, t in ipairs(b.Tabs) do addTab(t) end
+end
+for _, t in ipairs(Cfg.ExtraTabs or {}) do addTab(t) end -- Summit Tower board etc.
 
 ---------------------------------------------------------------- stores
 local fake = false
@@ -56,6 +59,7 @@ local function liveValue(p, t)
 		return tonumber(p:GetAttribute(name))
 	end
 	if t.Key == "Donated" then return tonumber(p:GetAttribute("Donated")) end
+	if t.Key == "TowerWins" then return tonumber(p:GetAttribute("TowerWins")) end
 	if t.Key == "StayTime" then return math.floor(PlayerData.getTime(p)) end
 	local sec
 	if t.Key == "Tower" then sec = tonumber(p:GetAttribute("TowerBestTime"))
@@ -75,9 +79,28 @@ local function nameOf(id)
 	return names[id] or ("Player " .. id)
 end
 Players.PlayerAdded:Connect(function(p) names[p.UserId] = p.DisplayName end)
+-- ONE call for up to 200 names (asking one by one took up to 50 calls per board = the slow boards)
+local UserService = game:GetService("UserService")
+local function prefetchNames(ids)
+	local need = {}
+	for _, id in ipairs(ids) do
+		if not names[id] then
+			local p = Players:GetPlayerByUserId(id)
+			if p then names[id] = p.DisplayName elseif id > 0 then table.insert(need, id) end
+		end
+	end
+	for i = 1, #need, 200 do
+		local batch = table.move(need, i, math.min(i + 199, #need), 1, {})
+		local ok, infos = pcall(function() return UserService:GetUserInfosByUserIdsAsync(batch) end)
+		if ok and type(infos) == "table" then
+			for _, info in ipairs(infos) do names[info.Id] = info.DisplayName or info.Username end
+		end
+	end
+end
 
 ---------------------------------------------------------------- publish (store rows + live players)
 local raw = {} -- key -> { [userId] = value } from the store
+local reloadedAt = {} -- key -> os.time() of the last DataStore reload
 local function better(t, a, b) if t.Asc then return a < b end return a > b end
 local function publish(key)
 	local t = tabs[key]
@@ -86,9 +109,12 @@ local function publish(key)
 	for _, p in ipairs(Players:GetPlayers()) do
 		local v = liveValue(p, t)
 		if v and v > 0 then
-			local old = vals[p.UserId]
-			if t.Asc then if not old or v < old then vals[p.UserId] = v end
-			else vals[p.UserId] = v end -- live value is the newest for counters / coins
+			-- the live value of a player on this server is always the newest one (the admin panel may have
+			-- changed it, or a new best time was just set)
+			vals[p.UserId] = v
+		elseif v == 0 or v == nil then
+			-- reset to 0 on this server (admin) → not on the board, even if the store still has an old value
+			if loaded(p) and raw[key] and raw[key][p.UserId] == nil then vals[p.UserId] = nil end
 		end
 	end
 	local list = {}
@@ -99,7 +125,8 @@ local function publish(key)
 		rows[i] = { id = list[i][1], n = nameOf(list[i][1]), v = list[i][2] }
 	end
 	local sv = folder:FindFirstChild(key)
-	if sv then sv.Value = Http:JSONEncode({ t = os.time(), rows = rows }) end
+	-- r = when this board was last reloaded from the DataStore, every = seconds between reloads (boards show a countdown)
+	if sv then sv.Value = Http:JSONEncode({ t = os.time(), r = reloadedAt[key] or os.time(), every = Cfg.RefreshEvery, rows = rows }) end
 end
 
 local function reload(key)
@@ -107,12 +134,15 @@ local function reload(key)
 	local ok, pages = pcall(function() return storeOf(t):GetSortedAsync(t.Asc == true, Cfg.TopN) end)
 	if ok and pages then
 		local map = {}
+		local ids = {}
 		for _, e in ipairs(pages:GetCurrentPage()) do
 			local id, v = tonumber(e.key), tonumber(e.value)
-			if id and v and v > 0 then map[id] = v end
+			if id and v and v > 0 then map[id] = v table.insert(ids, id) end
 		end
 		raw[key] = map
+		prefetchNames(ids)
 	end
+	reloadedAt[key] = os.time()
 	publish(key)
 end
 
@@ -152,13 +182,15 @@ task.spawn(function()
 	end
 end)
 
--- reload loop: one board at a time, spread across RefreshEvery
+-- reload loop: first pass FAST (every board filled ~right after the server starts), then every board
+-- once every RefreshEvery (5 min), spread out so the DataStore isn't hit all at once
 task.spawn(function()
-	task.wait(5)
+	task.wait(3)
+	for _, t in ipairs(order) do pcall(reload, t.Key) task.wait(0.4) end
 	while true do
 		for _, t in ipairs(order) do
-			pcall(reload, t.Key)
 			task.wait(Cfg.RefreshEvery / #order)
+			pcall(reload, t.Key)
 		end
 	end
 end)
@@ -170,6 +202,30 @@ task.spawn(function()
 		for _, t in ipairs(order) do pcall(publish, t.Key) end
 	end
 end)
+
+-- the ADMIN panel sets (or removes) one player's value on a board, even if it's worse than before
+-- (speed runs normally only ever keep the fastest time). value nil / 0 = remove the player from the board.
+local setFn = SSS:FindFirstChild("LeaderboardSet") or Instance.new("BindableFunction")
+setFn.Name = "LeaderboardSet" setFn.Parent = SSS
+setFn.OnInvoke = function(key, userId, value)
+	local t = tabs[key]
+	userId = tonumber(userId)
+	if not t or not userId then return false end
+	value = tonumber(value)
+	local ok
+	if not value or value <= 0 then
+		ok = pcall(function() storeOf(t):RemoveAsync(tostring(userId)) end)
+		if raw[key] then raw[key][userId] = nil end
+	else
+		value = math.floor(value)
+		ok = pcall(function() storeOf(t):SetAsync(tostring(userId), value) end)
+		raw[key] = raw[key] or {} raw[key][userId] = value
+	end
+	-- don't let the old "already written" memory skip the next normal save
+	for p, w in pairs(written) do if p.UserId == userId then w[key] = nil end end
+	pcall(publish, key)
+	return ok
+end
 
 -- other scripts (DonateServer) can add to a board right away
 local bump = SSS:FindFirstChild("LeaderboardBump") or Instance.new("BindableEvent")

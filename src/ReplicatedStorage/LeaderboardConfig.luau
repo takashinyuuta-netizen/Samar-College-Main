@@ -5,7 +5,8 @@
 local C = {}
 
 C.TopN = 50
-C.RefreshEvery = 150   -- seconds between reloading each board from the DataStore
+C.RefreshEvery = 300   -- every board is reloaded from the DataStore every 5 minutes (all servers' scores)
+                       -- (players on this server still see their own new score within ~15 s)
 C.WriteEvery = 120     -- seconds between saving the players' current values
 C.Center = Vector3.new(-232, 0, -4.5) -- Memorial Park rotunda
 C.Radius = 44
@@ -35,6 +36,11 @@ C.Boards = {
 		{ Key = "StayTime", Label = "⏳ Most Stay Time", Store = "SamarCollege_PlayTime_v1", Fmt = "time" },
 		{ Key = "Donated", Label = "💖 Top Donors", Store = "SC_LB_Donated_v1", Fmt = "robux" },
 	} },
+}
+
+-- boards that are NOT on the park stands but use the same data + top-50 list (Summit Tower board, PATAAS island board)
+C.ExtraTabs = {
+	{ Key = "TowerWins", Label = "🏆 Most Summits", Store = "SC_TowerWins_v1", Fmt = "wins" },
 }
 
 function C.format(fmt, v)

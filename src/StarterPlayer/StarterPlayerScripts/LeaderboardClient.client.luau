@@ -34,21 +34,28 @@ end
 
 local function build(board, screen)
 	local accent = board.Color
+	-- SHORT screens (the wide, low stands under the campus-front awning): denser pixels + a slimmer
+	-- tab bar / header / footer so ~4 rows still show (scroll for the rest of the top 50)
+	local short = screen.Size.Y < 10
+	local pps = short and math.clamp(math.floor(380 / screen.Size.Y), 32, 64) or PPS
+	local TAB_Y, TAB_H, BTN_H = 10, 62, 50
+	local HEAD_Y, HEAD_H, LIST_Y, FOOT_H = 80, 34, 122, 52
+	if short then TAB_Y, TAB_H, BTN_H, HEAD_Y, HEAD_H, LIST_Y, FOOT_H = 6, 48, 40, 58, 30, 94, 44 end
 	local sg = new("SurfaceGui", { Name = "LB_" .. board.Id, Adornee = screen, Face = Enum.NormalId.Front, ResetOnSpawn = false,
-		SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud, PixelsPerStud = PPS, LightInfluence = 0, MaxDistance = 110,
+		SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud, PixelsPerStud = pps, LightInfluence = 0, MaxDistance = 110,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling, ClipsDescendants = true }, pgui)
 	local loading = screen:FindFirstChild("Loading") if loading then loading.Enabled = false end
 	local bg = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(16, 18, 28), BorderSizePixel = 0 }, sg)
 	new("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(30, 34, 52), Color3.fromRGB(12, 13, 20)) }, bg)
 
 	-- tabs
-	local tabBar = new("ScrollingFrame", { Position = UDim2.fromOffset(10, 10), Size = UDim2.new(1, -20, 0, 62), BackgroundTransparency = 1,
+	local tabBar = new("ScrollingFrame", { Position = UDim2.fromOffset(10, TAB_Y), Size = UDim2.new(1, -20, 0, TAB_H), BackgroundTransparency = 1,
 		ScrollingDirection = Enum.ScrollingDirection.X, AutomaticCanvasSize = Enum.AutomaticSize.X, CanvasSize = UDim2.new(),
 		ScrollBarThickness = 6, ScrollBarImageColor3 = accent, BorderSizePixel = 0 }, bg)
 	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, tabBar)
 
 	-- column header
-	local head = new("Frame", { Position = UDim2.fromOffset(10, 80), Size = UDim2.new(1, -20, 0, 34), BackgroundColor3 = accent, BackgroundTransparency = 0.75 }, bg)
+	local head = new("Frame", { Position = UDim2.fromOffset(10, HEAD_Y), Size = UDim2.new(1, -20, 0, HEAD_H), BackgroundColor3 = accent, BackgroundTransparency = 0.75 }, bg)
 	corner(head, 8)
 	local tabTitle = new("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 0), Size = UDim2.new(0.6, 0, 1, 0), Font = Enum.Font.GothamBlack,
 		TextSize = 22, TextColor3 = WHITE, TextXAlignment = Enum.TextXAlignment.Left, Text = "" }, head)
@@ -56,7 +63,7 @@ local function build(board, screen)
 		TextSize = 18, TextColor3 = MUTED, TextXAlignment = Enum.TextXAlignment.Right, Text = "TOP " .. Cfg.TopN }, head)
 
 	-- list
-	local list = new("ScrollingFrame", { Position = UDim2.fromOffset(10, 122), Size = UDim2.new(1, -20, 1, -122 - 70), BackgroundTransparency = 1,
+	local list = new("ScrollingFrame", { Position = UDim2.fromOffset(10, LIST_Y), Size = UDim2.new(1, -20, 1, -LIST_Y - FOOT_H - 18), BackgroundTransparency = 1,
 		ScrollingDirection = Enum.ScrollingDirection.Y, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(),
 		ScrollBarThickness = 14, ScrollBarImageColor3 = accent, BorderSizePixel = 0, ElasticBehavior = Enum.ElasticBehavior.Always, Active = true }, bg)
 	new("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, list)
@@ -82,12 +89,12 @@ local function build(board, screen)
 	end
 
 	-- footer: your rank + scroll buttons
-	local foot = new("Frame", { Position = UDim2.new(0, 10, 1, -62), Size = UDim2.new(1, -20, 0, 52), BackgroundColor3 = Color3.fromRGB(34, 38, 56) }, bg)
+	local foot = new("Frame", { Position = UDim2.new(0, 10, 1, -FOOT_H - 10), Size = UDim2.new(1, -20, 0, FOOT_H), BackgroundColor3 = Color3.fromRGB(34, 38, 56) }, bg)
 	corner(foot, 10)
 	local me = new("TextLabel", { BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -150, 1, 0), Font = Enum.Font.GothamBold,
 		TextSize = 19, TextColor3 = WHITE, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Text = "" }, foot)
 	local function scrollBtn(txt, x, dir)
-		local b = new("TextButton", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, x, 0.5, 0), Size = UDim2.fromOffset(58, 40), BackgroundColor3 = accent,
+		local b = new("TextButton", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, x, 0.5, 0), Size = UDim2.fromOffset(58, FOOT_H - 10), BackgroundColor3 = accent,
 			Font = Enum.Font.GothamBlack, TextSize = 22, TextColor3 = Color3.fromRGB(20, 20, 30), Text = txt, AutoButtonColor = true }, foot)
 		corner(b, 8)
 		b.Activated:Connect(function()
@@ -137,7 +144,7 @@ local function build(board, screen)
 		end
 	end
 	for i, t in ipairs(board.Tabs) do
-		local b = new("TextButton", { LayoutOrder = i, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 50), BackgroundColor3 = Color3.fromRGB(44, 48, 68),
+		local b = new("TextButton", { LayoutOrder = i, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, BTN_H), BackgroundColor3 = Color3.fromRGB(44, 48, 68),
 			Font = Enum.Font.GothamBold, TextSize = 20, TextColor3 = WHITE, Text = t.Label, AutoButtonColor = true }, tabBar)
 		corner(b, 10)
 		new("UIPadding", { PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 16) }, b)

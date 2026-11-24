@@ -488,6 +488,16 @@ end
 local board = CS:GetTagged("SkyClimbBoard")[1]
 local boardText
 if board then
+	-- top-50 scrollable board (drawn on each player's screen by StarterPlayerScripts.ScrollBoards)
+	-- from ReplicatedStorage.Leaderboards.PataasEasy / .PataasHard (LeaderboardServer reloads them every 5 min)
+	board:SetAttribute("SB_Title", "⛰️ PATAAS! FASTEST CLIMBERS")
+	board:SetAttribute("SB_Face", "Right")
+	board:SetAttribute("SB_Color", Color3.fromRGB(245, 200, 60))
+	board:SetAttribute("SB_LeftKey", "PataasEasy") board:SetAttribute("SB_LeftLabel", "🟢 Easy") board:SetAttribute("SB_LeftFmt", "ms")
+	board:SetAttribute("SB_RightKey", "PataasHard") board:SetAttribute("SB_RightLabel", "🔴 Hard") board:SetAttribute("SB_RightFmt", "ms")
+	CS:AddTag(board, "ScrollBoard")
+end
+if false and board then -- (old 10-name text board, replaced by ScrollBoards)
 	local g = Instance.new("SurfaceGui") g.Face = Enum.NormalId.Right g.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud g.PixelsPerStud = 25 g.LightInfluence = 0 g.Parent = board
 	local bg = Instance.new("Frame") bg.Size = UDim2.fromScale(1, 1) bg.BackgroundColor3 = Color3.fromRGB(16, 22, 28) bg.Parent = g
 	local title = Instance.new("TextLabel") title.Size = UDim2.new(1, 0, 0.14, 0) title.BackgroundColor3 = Color3.fromRGB(25, 60, 40) title.Font = Enum.Font.GothamBlack title.TextScaled = true title.TextColor3 = Color3.fromRGB(245, 200, 60) title.Text = "🏆 FASTEST CLIMBERS" title.Parent = bg
@@ -507,6 +517,9 @@ local function nameOf(id)
 end
 local refreshing = false
 refreshBoard = function()
+	-- ask LeaderboardServer to republish now (players here see their new time right away)
+	local bump = game:GetService("ServerScriptService"):FindFirstChild("LeaderboardBump")
+	if bump then bump:Fire("PataasEasy") bump:Fire("PataasHard") end
 	if not boardText or refreshing then return end
 	refreshing = true
 	for _, mode in ipairs({ "Easy", "Hard" }) do
@@ -530,4 +543,4 @@ refreshBoard = function()
 	end
 	refreshing = false
 end
-task.spawn(function() while true do refreshBoard() task.wait(90) end end)
+-- (the 5-minute DataStore reload is done by LeaderboardServer for every board)
