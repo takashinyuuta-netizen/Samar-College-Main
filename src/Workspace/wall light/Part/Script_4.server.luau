@@ -1,15 +1,14 @@
 local lightPart = script.Parent
 local lightSource = lightPart:FindFirstChildWhichIsA("Light")
 
--- Find the switch's Value inside the Light & Switch model
-local lightSwitchModel = workspace:FindFirstChild("Light & Switch")
+-- Find the switch's Value by searching for the Switch model
 local switchValue = nil
-if lightSwitchModel then
-	local modelFolder = lightSwitchModel:FindFirstChild("Model")
-	if modelFolder then
-		local switch = modelFolder:FindFirstChild("Switch")
+for _, obj in ipairs(workspace:GetChildren()) do
+	if obj.Name == "Model" then
+		local switch = obj:FindFirstChild("Switch")
 		if switch then
 			switchValue = switch:FindFirstChild("Value")
+			break
 		end
 	end
 end
