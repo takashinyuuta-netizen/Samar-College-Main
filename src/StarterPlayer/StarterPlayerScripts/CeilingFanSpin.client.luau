@@ -24,6 +24,8 @@ end
 local function add(m)
 	if known[m] or not (m:IsA("Model") and m:GetAttribute("Spin")) then return end
 	local blades = m:FindFirstChild("Blades", true)
+	-- wall fans (Thermoloth): attribute SpinPart names the model that turns (its pivot Y = the motor axis)
+	if not blades and m:GetAttribute("SpinPart") then blades = m:FindFirstChild(m:GetAttribute("SpinPart")) end
 	if not (blades and blades:IsA("Model")) then return end
 	known[m] = true
 	local head = m:FindFirstChild("Head")

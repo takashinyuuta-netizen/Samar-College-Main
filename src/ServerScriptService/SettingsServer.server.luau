@@ -1,5 +1,5 @@
 --[[ SettingsServer — remembers each player's Settings page choices between visits.
-  Saved: Improve FPS, Disable Effects, Shadows, Event Alerts, Leaderboard Updates, Music and SFX volume.
+  Saved: Improve FPS, Disable Effects, Shadows, Show FPS, Grass, Event Alerts, Leaderboard Updates, Music and SFX volume.
   • On join the saved table is put on the player as attribute "SavedSettings" (JSON) and "SettingsLoaded" = true;
     HUDClient reads it to set the toggles / sliders (and PerformanceSettings applies them right away).
   • The client sends changes with ReplicatedStorage.SettingsRemote (validated here), saved a few seconds
@@ -20,6 +20,8 @@ local SCHEMA = {
 	Setting_ImproveFPS = "boolean",
 	Setting_DisableEffects = "boolean",
 	Setting_Shadows = "boolean",
+	Setting_ShowFPS = "boolean",
+	Setting_Grass = "boolean",
 	Setting_EventAlerts = "boolean",
 	Setting_LeaderboardUpdates = "boolean",
 	Setting_MusicVolume = "number",
