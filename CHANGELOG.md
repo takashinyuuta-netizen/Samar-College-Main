@@ -75,3 +75,4 @@ The Kid Server has its own changelog in its repository.
 - Drivable car and motorcycle at the San Roque street parking; sprinting
 - Build tools for park furniture, trees, utility poles and union separation
 - Canteen NPC renamed from a named person to the "Canteen Manager" (dialogue, name tag and Escape School patrol template)
+- PATAAS! portal: "Teleport to PATAAS! Parkour?" Yes / Not now dialog, then a loading screen that waits for the island to load; going back to campus shows the loading screen again

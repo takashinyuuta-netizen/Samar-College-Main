@@ -242,6 +242,130 @@ local function finishCard(d)
 	task.delay(12, function() if f.Parent then f:Destroy() end end)
 end
 
+---------------------------------------------------------------- travel: "Teleport?" dialog + loading screen
+local TRAVEL = pg:FindFirstChild("SkyTravelGui")
+if TRAVEL then TRAVEL:Destroy() end
+TRAVEL = new("ScreenGui", { Name = "SkyTravelGui", IgnoreGuiInset = true, ResetOnSpawn = false, DisplayOrder = 950, ZIndexBehavior = Enum.ZIndexBehavior.Sibling }, pg)
+local DEST = {
+	island = { icon = "⛰️", title = "PATAAS! PARKOUR", ask = "Teleport to PATAAS! Parkour?", sub = "A floating island high above the campus. Climb to the top!" },
+	campus = { icon = "🏫", title = "SAMAR COLLEGE CAMPUS", ask = "Go back to the campus?", sub = "You will leave the PATAAS! island and return to the portal." },
+}
+local function fitScale(obj, w, h)
+	local sc = new("UIScale", {}, obj)
+	local function upd() local v = TRAVEL.AbsoluteSize if v.X > 1 then sc.Scale = math.clamp(math.min((v.X - 20) / w, (v.Y - 20) / h), 0.55, 1) end end
+	TRAVEL:GetPropertyChangedSignal("AbsoluteSize"):Connect(upd) upd()
+end
+-- dialog
+local ask = new("Frame", { Name = "AskTeleport", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(400, 210), BackgroundColor3 = BG, Visible = false, ZIndex = 40 }, TRAVEL)
+corner(ask, UDim.new(0, 18)) stroke(ask, GOLD, 2) fitScale(ask, 400, 210)
+local askIcon = label(ask, { Position = UDim2.fromOffset(0, 12), Size = UDim2.new(1, 0, 0, 40), TextXAlignment = Enum.TextXAlignment.Center, TextSize = 34, ZIndex = 41, Text = "⛰️" })
+local askTitle = label(ask, { Position = UDim2.fromOffset(16, 56), Size = UDim2.new(1, -32, 0, 28), TextXAlignment = Enum.TextXAlignment.Center, Font = Enum.Font.GothamBlack, TextSize = 21, TextColor3 = GOLD, ZIndex = 41, Text = "" })
+local askSub = label(ask, { Position = UDim2.fromOffset(20, 86), Size = UDim2.new(1, -40, 0, 40), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = true, TextSize = 14, TextColor3 = DIM, ZIndex = 41, Text = "" })
+local yes = button(ask, "✅ Yes, teleport", GREEN, { AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(0.5, -6, 1, -16), Size = UDim2.fromOffset(170, 48), TextSize = 17, ZIndex = 41 })
+local no = button(ask, "✖ Not now", CARD, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0.5, 6, 1, -16), Size = UDim2.fromOffset(170, 48), TextSize = 17, ZIndex = 41 })
+stroke(no, DIM, 1)
+local askDest
+local function showAsk(dest)
+	local d = DEST[dest] if not d then return end
+	askDest = dest
+	askIcon.Text, askTitle.Text, askSub.Text = d.icon, d.ask, d.sub
+	ask.Visible = true
+	ask.Size = UDim2.fromOffset(300, 160) tw(ask, 0.18, { Size = UDim2.fromOffset(400, 210) })
+end
+yes.Activated:Connect(function()
+	if not ask.Visible then return end
+	ask.Visible = false
+	Remote:FireServer(askDest == "island" and "enter" or "campus")
+end)
+no.Activated:Connect(function()
+	ask.Visible = false
+	if askDest == "island" then Remote:FireServer("decline") end
+end)
+-- loading screen
+local load = new("Frame", { Name = "TravelLoading", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), Visible = false, ZIndex = 60 }, TRAVEL)
+new("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(20, 60, 40), Color3.fromRGB(8, 12, 18)) }, load)
+local box = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(520, 250), BackgroundTransparency = 1, ZIndex = 61 }, load)
+fitScale(box, 520, 250)
+local lIcon = label(box, { Position = UDim2.fromOffset(0, 0), Size = UDim2.new(1, 0, 0, 70), TextXAlignment = Enum.TextXAlignment.Center, TextSize = 60, ZIndex = 62, Text = "⛰️" })
+local lTitle = label(box, { Position = UDim2.fromOffset(0, 78), Size = UDim2.new(1, 0, 0, 38), TextXAlignment = Enum.TextXAlignment.Center, Font = Enum.Font.GothamBlack, TextSize = 32, TextColor3 = GOLD, ZIndex = 62, Text = "" })
+local lStatus = label(box, { Position = UDim2.fromOffset(0, 122), Size = UDim2.new(1, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Center, TextSize = 16, TextColor3 = TEXT, ZIndex = 62, Text = "Loading the area…" })
+local barBg = new("Frame", { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 160), Size = UDim2.fromOffset(380, 14), BackgroundColor3 = Color3.fromRGB(40, 46, 56), ZIndex = 62 }, box)
+corner(barBg, UDim.new(1, 0))
+local barFill = new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = GOLD, ZIndex = 63 }, barBg)
+corner(barFill, UDim.new(1, 0))
+new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(60, 190, 90), Color3.fromRGB(245, 200, 60)) }, barFill)
+local lTip = label(box, { Position = UDim2.fromOffset(0, 190), Size = UDim2.new(1, 0, 0, 40), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = true, TextSize = 13, TextColor3 = DIM, ZIndex = 62, Text = "" })
+local TIPS = { "Tip: EASY mode saves your progress at every checkpoint 🚩", "Tip: HARD mode has no checkpoints — fall and you start over 💀", "Tip: crumbling book stacks vanish a moment after you land on them 📚", "Tip: tap 🏫 Campus on the island to go back to school" }
+local loading, loadToken = false, 0
+local controls
+local function getControls()
+	if not controls then pcall(function() local pm = player.PlayerScripts:FindFirstChild("PlayerModule") if pm then controls = require(pm):GetControls() end end) end
+	return controls
+end
+local function hideLoading()
+	loading = false
+	if getControls() then pcall(function() controls:Enable() end) end
+	if load.Visible then
+		tw(load, 0.4, { BackgroundTransparency = 1 })
+		for _, o in ipairs(load:GetDescendants()) do
+			if o:IsA("TextLabel") then tw(o, 0.4, { TextTransparency = 1 }) elseif o:IsA("Frame") and o ~= box then tw(o, 0.4, { BackgroundTransparency = 1 }) end
+		end
+		task.delay(0.42, function() if not loading then load.Visible = false end end)
+	end
+end
+local function showLoading(dest)
+	local d = DEST[dest] or DEST.island
+	ask.Visible = false
+	loading = true
+	loadToken += 1
+	local my = loadToken
+	lIcon.Text, lTitle.Text = d.icon, d.title
+	lStatus.Text = "Loading the area… please wait"
+	lTip.Text = TIPS[math.random(#TIPS)]
+	load.BackgroundTransparency = 1
+	for _, o in ipairs(load:GetDescendants()) do
+		if o:IsA("TextLabel") then o.TextTransparency = 0 elseif o:IsA("Frame") and o ~= box then o.BackgroundTransparency = 0 end
+	end
+	load.Visible = true
+	tw(load, 0.3, { BackgroundTransparency = 0 })
+	barFill.Size = UDim2.fromScale(0, 1)
+	TweenService:Create(barFill, TweenInfo.new(4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Size = UDim2.fromScale(0.85, 1) }):Play()
+	if getControls() then pcall(function() controls:Disable() end) end
+	-- dots animation
+	task.spawn(function()
+		local n = 0
+		while loading and loadToken == my do
+			n = n % 3 + 1
+			if lStatus.Text:find("Loading") then lStatus.Text = "Loading the area, please wait" .. string.rep(".", n) end
+			task.wait(0.4)
+		end
+	end)
+	task.delay(25, function() if loading and loadToken == my then hideLoading() end end) -- safety
+end
+local function finishLoading(dest)
+	local my = loadToken
+	task.spawn(function()
+		local t0 = os.clock()
+		local params = RaycastParams.new() params.FilterType = Enum.RaycastFilterType.Exclude
+		while os.clock() - t0 < 10 do
+			task.wait(0.15)
+			local char = player.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				params.FilterDescendantsInstances = { char }
+				local ground = workspace:Raycast(hrp.Position, Vector3.new(0, -30, 0), params)
+				local okArea = dest ~= "island" or (workspace:FindFirstChild("SkyClimb") and workspace.SkyClimb:FindFirstChild("StartIsland") ~= nil)
+				if ground and okArea and os.clock() - t0 > 0.6 then break end
+			end
+		end
+		if loadToken ~= my then return end
+		lStatus.Text = "✅ Ready!"
+		tw(barFill, 0.3, { Size = UDim2.fromScale(1, 1) })
+		task.wait(0.5)
+		if loadToken == my then hideLoading() end
+	end)
+end
+
 ---------------------------------------------------------------- server messages
 Remote.OnClientEvent:Connect(function(d)
 	if type(d) ~= "table" then return end
@@ -253,6 +377,10 @@ Remote.OnClientEvent:Connect(function(d)
 		if d.running then S.finished = nil end
 		readZones()
 		refresh()
+	elseif d.type == "ask" then showAsk(d.dest)
+	elseif d.type == "loading" then showLoading(d.dest)
+	elseif d.type == "arrived" then finishLoading(d.dest)
+	elseif d.type == "loadDone" then hideLoading()
 	elseif d.type == "enter" then popup("⛰️ Welcome to PATAAS! Parkour", GOLD, 3)
 	elseif d.type == "start" then S.zone = 0 popup(d.mode == "Easy" and "🟢 EASY — checkpoints are ON. GO!" or "🔴 HARD — no checkpoints. GO!", d.mode == "Easy" and EASY or HARD)
 	elseif d.type == "checkpoint" then popup(("🚩 Checkpoint saved! (Zone %d)"):format(d.zone or 0), EASY, 1.8)

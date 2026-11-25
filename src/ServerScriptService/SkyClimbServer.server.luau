@@ -196,6 +196,39 @@ local function leaveIsland(p)
 	pushState(p)
 end
 
+---------------------------------------------------------------- travel with a loading screen
+-- Portal → "Teleport to PATAAS?" (client) → Yes → loading screen while the area streams in → teleport.
+-- Going back to campus works the same way (Campus button / return portal).
+local declined, traveling, askedAt = {}, {}, {}
+local function travel(p, dest)
+	if traveling[p] then return end
+	if dest == "island" then
+		local busy = Busy.reason(p, { ignore = { InSkyClimb = true } })
+		if busy then toast(p, busy) send(p, { type = "loadDone" }) return end
+	end
+	traveling[p] = true
+	send(p, { type = "loading", dest = dest })
+	task.spawn(function()
+		local t0 = os.clock()
+		local pos = dest == "island" and ARRIVAL or (returnSpot())
+		pcall(function() p:RequestStreamAroundAsync(pos, 10) end)
+		local left = 1.5 - (os.clock() - t0)
+		if left > 0 then task.wait(left) end
+		if p.Parent then
+			prestreamed[p] = { pos = pos, t = os.clock(), done = true }
+			if dest == "island" then enterIsland(p) else leaveIsland(p) end
+			send(p, { type = "arrived", dest = dest })
+		end
+		traveling[p] = nil
+	end)
+end
+local function askTravel(p, dest)
+	if traveling[p] or (askedAt[p] and os.clock() - askedAt[p] < 6) then return end
+	askedAt[p] = os.clock()
+	send(p, { type = "ask", dest = dest })
+end
+Players.PlayerRemoving:Connect(function(p) declined[p] = nil traveling[p] = nil askedAt[p] = nil end)
+
 local function startRun(p, mode)
 	if mode ~= "Easy" and mode ~= "Hard" then return end
 	runs[p] = { mode = mode, start = workspace:GetServerTimeNow(), cp = 0, cpPos = nil, falls = 0 }
@@ -281,7 +314,7 @@ for _, k in ipairs(CS:GetTagged("SkyClimbKiosk")) do
 end
 for _, part in ipairs(CS:GetTagged("SkyClimbReturn")) do
 	local pp = part:FindFirstChildWhichIsA("ProximityPrompt")
-	if pp then pp.Triggered:Connect(leaveIsland) end
+	if pp then pp.Triggered:Connect(function(p) if p:GetAttribute("InSkyClimb") then askTravel(p, "campus") end end) end
 end
 for _, part in ipairs(CS:GetTagged("SkyClimbToStart")) do
 	local pp = part:FindFirstChildWhichIsA("ProximityPrompt")
@@ -364,8 +397,9 @@ Remote.OnServerEvent:Connect(function(p, action, data)
 	elseif action == "checkpoint" and r and not r.finished then
 		if r.mode == "Easy" and r.cpPos then teleport(p, r.cpPos) else teleport(p, START_POS) end
 	elseif action == "leave" then endRun(p) teleport(p, ARRIVAL) pushState(p)
-	elseif action == "campus" and p:GetAttribute("InSkyClimb") then leaveIsland(p)
-	elseif action == "enter" and not p:GetAttribute("InSkyClimb") then enterIsland(p)
+	elseif action == "campus" and p:GetAttribute("InSkyClimb") then askedAt[p] = nil travel(p, "campus")
+	elseif action == "enter" and not p:GetAttribute("InSkyClimb") then askedAt[p] = nil travel(p, "island")
+	elseif action == "decline" then declined[p] = true askedAt[p] = nil
 	end
 end)
 
@@ -400,6 +434,7 @@ task.spawn(function()
 			if r then
 				if not p:GetAttribute("InSkyClimb") then
 					if (r.Position - campus).Magnitude < 45 then prestream(p, ARRIVAL) end
+					if declined[p] and (r.Position - campus).Magnitude > 18 then declined[p] = nil end
 				else
 					local run = runs[p]
 					if not run or run.finished then
@@ -442,7 +477,10 @@ do
 			-- really walked into the ring. (No extra position check: the touch is reported by the player's
 			-- device and the server's copy of their position lags a few studs behind.)
 			portalCooldown[p] = os.clock() + 3
-			enterIsland(p)
+			if declined[p] then return end -- said "Not now": ask again after they walk away and come back
+			local busy = Busy.reason(p, { ignore = { InSkyClimb = true } })
+			if busy then toast(p, busy) return end
+			askTravel(p, "island")
 		end)
 		-- small hint so players know to walk in
 		local base = field.Parent:FindFirstChild("Base")
