@@ -113,6 +113,10 @@ local function seat(court, e, markerName)
 	local hum = ch and ch:FindFirstChildOfClass("Humanoid")
 	local mk = court.markers:FindFirstChild(markerName)
 	if not root or not hum or not mk then return end
+	-- get off the table's chair first, and keep the chairs from grabbing players during the match
+	hum.Sit = false
+	if hum.SeatPart then local w = hum.SeatPart:FindFirstChild("SeatWeld") if w then w:Destroy() end end
+	for _, d in ipairs(court.model:GetDescendants()) do if d:IsA("Seat") and d.Parent.Name == "Chair" then d.Disabled = true end end
 	local r15 = hum.RigType == Enum.HumanoidRigType.R15
 	local up = r15 and (hum.HipHeight * 0.55 + root.Size.Y / 2 - 0.15) or 1.5
 	root.Anchored = true
@@ -277,6 +281,7 @@ function G.resign(court, player)
 end
 
 function G.stop(court)
+	for _, d in ipairs(court.model:GetDescendants()) do if d:IsA("Seat") and d.Parent.Name == "Chair" then d.Disabled = false end end
 	local g = court.chess
 	if g then g.over = true unseat(g.white) unseat(g.black) end
 	games[court] = nil
@@ -284,6 +289,7 @@ function G.stop(court)
 end
 
 function G.reset(court)
+	for _, d in ipairs(court.model:GetDescendants()) do if d:IsA("Seat") and d.Parent.Name == "Chair" then d.Disabled = false end end
 	games[court] = nil
 	court.chess = nil
 	sync(court, E.fromFEN(E.START).board)

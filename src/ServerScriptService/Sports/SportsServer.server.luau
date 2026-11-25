@@ -753,7 +753,37 @@ local function setupCourt(model)
 	if cfg.Kind == "Chess" then Chess.setupIdle(court) end
 	for _, pp in ipairs(model:GetDescendants()) do
 		if pp:IsA("ProximityPrompt") and pp.Name == "SportsJoin" then
-			pp.Triggered:Connect(function(player) Event:FireClient(player, { t = "open", court = snapshot(court) }) end)
+			if cfg.Kind == "Chess" then
+				-- ♟️ chess: no walk-up prompt (the tables stand close together, so the wrong table's panel kept
+				-- popping up). Sit on this table's chair, then tap the board to open the panel.
+				pp.Enabled = false
+				local function seatedHere(player)
+					if playerCourt[player] == court then return true end
+					local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+					local seat = hum and hum.SeatPart
+					return seat ~= nil and seat:IsDescendantOf(model)
+				end
+				for _, part in ipairs({ pp.Parent, model:FindFirstChild("BoardBorder") }) do
+					if part and part:IsA("BasePart") and not part:FindFirstChild("ChessTap") then
+						local cd = Instance.new("ClickDetector") cd.Name = "ChessTap" cd.MaxActivationDistance = 14 cd.Parent = part
+						cd.MouseClick:Connect(function(player)
+							if seatedHere(player) then Event:FireClient(player, { t = "open", court = snapshot(court) })
+							else Event:FireClient(player, { t = "toast", text = "♟️ Sit on a chair at this table, then tap the board to play." }) end
+						end)
+					end
+				end
+				-- the chairs at the table are real seats
+				for _, ch in ipairs(model:GetChildren()) do
+					local sp = ch:IsA("Model") and ch.Name == "Chair" and ch:FindFirstChild("Seat")
+					if sp and sp:IsA("Part") and not sp:IsA("Seat") then
+						local seat = Instance.new("Seat")
+						for _, prop in ipairs({ "Size", "CFrame", "Color", "Material", "Transparency", "Anchored", "CanCollide", "CastShadow" }) do seat[prop] = sp[prop] end
+						seat.Name = "Seat" seat.Parent = ch sp:Destroy()
+					end
+				end
+			else
+				pp.Triggered:Connect(function(player) Event:FireClient(player, { t = "open", court = snapshot(court) }) end)
+			end
 		end
 	end
 	updateBoard(court)
@@ -887,6 +917,18 @@ local libraryRoom = (function()
 end)()
 local readingBackup = ServerStorage:FindFirstChild("Backup_LibraryReadingArea")
 
+-- the reading tables are moved far below the library (not to ServerStorage: a reparent there did not
+-- always reach players' screens, so the old tables + chairs stayed visible under the chess tables)
+local READ_DROP = Vector3.new(0, -300, 0)
+local function hideReading(hide)
+	local ra = libraryRoom and (libraryRoom:FindFirstChild("ReadingArea") or (readingBackup and readingBackup:FindFirstChild("ReadingArea")))
+	if not ra then return end
+	if ra.Parent ~= libraryRoom then ra.Parent = libraryRoom end
+	local down = ra:GetAttribute("SC_Hidden") == true
+	if hide and not down then for _, d in ipairs(ra:GetDescendants()) do if d:IsA("Seat") and d.Occupant then d.Occupant.Sit = false end end ra:PivotTo(ra:GetPivot() + READ_DROP) ra:SetAttribute("SC_Hidden", true)
+	elseif not hide and down then ra:PivotTo(ra:GetPivot() - READ_DROP) ra:SetAttribute("SC_Hidden", false) end
+end
+
 local function insideVenue(player)
 	local ch = player.Character
 	local root = ch and ch:FindFirstChild("HumanoidRootPart")
@@ -908,7 +950,7 @@ local closeToken = 0
 local function openVenues()
 	if not venues then return end
 	for _, m in ipairs(HIDDEN:GetChildren()) do m.Parent = venues end
-	if libraryRoom and libraryRoom:FindFirstChild("ReadingArea") and readingBackup then libraryRoom.ReadingArea.Parent = readingBackup end
+	hideReading(true)
 	workspace:SetAttribute("IntramuralsActive", true)
 	venuesOpen = true
 end
@@ -928,7 +970,7 @@ local function closeVenues()
 		watching[p] = nil
 	end
 	for _, m in ipairs(venues:GetChildren()) do m.Parent = HIDDEN end
-	if libraryRoom and readingBackup and readingBackup:FindFirstChild("ReadingArea") then readingBackup.ReadingArea.Parent = libraryRoom end
+	hideReading(false)
 	venuesOpen = false
 end
 local function onIntramurals()
